@@ -1,0 +1,34 @@
+name: Test and deploy
+
+# Every push to main runs the tests, then uploads the app and server to Azure.
+# You can also run it by hand: GitHub → Actions → "Test and deploy" → Run workflow.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run server tests
+        run: python -m unittest tests.test_core -v
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: app
+          api_location: api
+          output_location: ""
+          skip_app_build: true

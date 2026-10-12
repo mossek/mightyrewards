@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mighty Rewards</title>
+<meta name="theme-color" content="#05090f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mighty Rewards">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;800;900&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one-screen counter tool in the Mighty Car-Wash look (black, chrome, cyan-blue).
+   Lock screen, then tabs: Counter (lookup + card | message + today), Customers, Settings (owner). */
+:root{
+  --bg:#05090f; --surface:#0d1620; --raised:#132130; --ink:#e8f1f6; --muted:#8aa1b1; --line:#1f3344;
+  --blue:#34aae6; --cyan:#62dcf4; --blue-ink:#03121c; --chrome:#c9d1d6;
+  --wa:#25d366; --wa-bubble:#005c4b; --wa-bg:#0b141a;
+  --good:#4cc17e; --bad:#ff8a80; --gold:#f5c344;
+  --font:"Archivo",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.5;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:16px 48px;display:grid;gap:18px}
+h1,h2,h3{margin:0;line-height:1.15;text-wrap:balance}
+h2{font-size:19px;font-weight:800}
+h3{font-size:16px;font-weight:600}
+p{margin:0}
+.small{font-size:13px;color:var(--muted)}
+.mono{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+label{font-size:13px;font-weight:600;display:block;margin-bottom:6px}
+input[type=text],input[type=tel],input[type=password]{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+input:focus-visible,button:focus-visible,a:focus-visible,tr:focus-visible{outline:3px solid var(--cyan);outline-offset:2px}
+button,.btn{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 16px;cursor:pointer;background:var(--blue);color:var(--blue-ink);text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.free{background:var(--gold);color:#2a1f00}
+button.danger{background:transparent;color:var(--bad);border:1px solid var(--bad)}
+.btn.wa{background:var(--wa);color:#04210f}
+button:disabled,.btn[aria-disabled=true]{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.row>*{flex:1 1 140px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:14px;min-width:0;align-content:start}
+.err{color:var(--bad);font-size:14px;font-weight:600;min-height:1.2em}
+.ok{color:var(--good);font-size:14px;font-weight:600}
+/* lock */
+.gate{max-width:380px;margin:6vh auto 0;display:grid;gap:18px;padding-inline:16px}
+.gate img{width:100%;max-width:100%;border-radius:12px}
+.pin-input{font-family:var(--mono)!important;font-size:30px!important;letter-spacing:.5em;text-align:center}
+/* header */
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand img{height:54px;width:auto;max-width:100%}
+.brand .who{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px;flex-wrap:wrap}
+.tabs button{background:transparent;color:var(--ink);font-weight:600;padding:8px 14px;font-size:14px;min-height:38px}
+.tabs button[aria-selected=true]{background:var(--blue);color:var(--blue-ink)}
+.grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:820px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:14px;background:var(--raised)}
+.card-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.cust-name{font-size:26px;font-weight:900;letter-spacing:.01em}
+.stamps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;max-width:340px}
+.stamp{aspect-ratio:1;max-width:100%;border-radius:50%;border:2px solid #2a4458;display:grid;place-items:center;font-size:13px;color:var(--chrome);font-family:var(--mono);background:#e9eef2;color:#13202b;font-weight:700}
+.stamp.on{background:#05090f;border:3px solid var(--blue);color:var(--cyan)}
+.stamp.on::after{content:"✓";font-size:18px}
+.stamp.on span{display:none}
+.stamp.free{background:#e9eef2;border:3px solid var(--blue);color:#0a466e;font-size:10px;font-family:var(--font);font-weight:900;text-align:center;line-height:1.05}
+.stamp.free.ready{background:var(--blue);color:#fff}
+.status{font-weight:800}
+.status.ready{color:var(--gold)}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:500;margin:0}
+.check input{margin-top:3px;width:20px;height:20px;flex:none;accent-color:var(--blue)}
+/* whatsapp preview */
+.phone{background:var(--wa-bg);border-radius:12px;padding:12px;min-height:150px;display:flex;flex-direction:column;justify-content:flex-end}
+.bubble{align-self:flex-end;max-width:96%;background:var(--wa-bubble);color:#e9edef;border-radius:10px 10px 2px 10px;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere;overflow:hidden}
+.bubble img{display:block;width:100%;max-width:100%;border-bottom:1px solid #0b141a}
+.bubble .t{padding:9px 12px}
+.bubble.empty{opacity:.65;align-self:center;border-radius:10px;padding:10px 12px;background:#1f2c34}
+.send-state{font-size:14px;font-weight:700}
+.send-state.sent{color:var(--good)}
+.send-state.fail{color:var(--bad)}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--raised)}
+.stat b{display:block;font-size:26px;font-weight:900;font-variant-numeric:tabular-nums}
+.stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.log{list-style:none;margin:0;padding:0;display:grid;gap:6px;max-height:280px;overflow:auto}
+.log li{font-size:14px;display:flex;gap:10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.log time{font-family:var(--mono);font-size:12px;color:var(--muted);flex:none;padding-top:2px}
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--raised)}
+.pill{display:inline-block;font-size:12px;font-weight:800;padding:2px 8px;border-radius:999px;background:var(--gold);color:#2a1f00}
+.pick{display:grid;gap:8px}
+.pick-label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{font:inherit;font-size:14px;font-weight:600;min-height:44px;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;display:inline-flex;flex-direction:column;align-items:flex-start;justify-content:center;line-height:1.2}
+.chip small{font-weight:500;color:var(--muted);font-size:12px}
+.chip[aria-pressed=true]{border-color:var(--blue);background:#0b2a40;box-shadow:inset 0 0 0 1px var(--blue)}
+.chip[aria-pressed=true] small{color:var(--cyan)}
+.plate{font-family:var(--mono);font-weight:700;letter-spacing:.06em;background:#f1f3f0;color:#111;border:2px solid #222;border-radius:6px;padding:2px 8px;display:inline-flex;align-items:center;gap:6px;font-size:14px}
+.plate button{min-height:0;padding:0 4px;background:transparent;color:#900;font-size:16px;line-height:1}
+.cars{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.banner{border:1px solid var(--gold);color:var(--gold);border-radius:10px;padding:10px 12px;font-size:14px;font-weight:600}
+.breakdown{display:grid;gap:4px;font-size:14px}
+.breakdown div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px dashed var(--line);padding-bottom:3px}
+.breakdown b{font-variant-numeric:tabular-nums}
+.log li.void span{text-decoration:line-through;color:var(--muted)}
+.edit-row{display:grid;grid-template-columns:minmax(0,1fr) 110px 90px 46px;gap:8px;align-items:end}
+.edit-row.staff{grid-template-columns:minmax(0,1fr) 46px}
+.edit-row input,.edit-row select{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+.edit-row button{padding:0;min-height:44px}
+@media (max-width:480px){.edit-row{grid-template-columns:minmax(0,1fr) 90px;}.edit-row .st{grid-column:1}}
+.badge{display:inline-block;min-width:20px;padding:0 6px;margin-left:6px;border-radius:999px;background:var(--gold);color:#2a1f00;font-size:12px;font-weight:800;line-height:20px;text-align:center}
+.replies{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.reply{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--raised);display:grid;gap:6px}
+.reply.unread{border-color:var(--gold)}
+.reply-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:14px}
+.reply-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.tag.stop{border-color:var(--bad);color:var(--bad)}
+.tag.start{border-color:var(--good);color:var(--good)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;font-size:14px;max-width:calc(100% - 32px);z-index:5}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:no-preference){.stamp{transition:background .2s,border-color .2s}}
+</style>
+</head>
+<body>
+
+<!-- LOCK -->
+<section id="sLock" class="gate" hidden>
+  <img src="logo.jpg" alt="Mighty Car-Wash">
+  <form id="lockForm" style="display:grid;gap:12px">
+    <div><label for="lockPin">Enter PIN</label><input id="lockPin" type="password" inputmode="numeric" maxlength="12" class="pin-input" autocomplete="off"></div>
+    <button type="submit" id="lockBtnGo">Unlock</button>
+    <div class="err" id="lockErr" role="alert"></div>
+  </form>
+</section>
+
+<!-- APP -->
+<div id="sApp" class="wrap" hidden>
+  <div class="top">
+    <div class="brand"><img src="logo.jpg" alt="Mighty Car-Wash"><div><div style="font-weight:900;font-size:18px">Rewards</div><div class="who" id="whoAmI">Staff</div></div></div>
+    <div class="row" style="flex:0 1 auto;align-items:center">
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tCounter" aria-selected="true" type="button">Counter</button>
+        <button role="tab" id="tCustomers" aria-selected="false" type="button">Customers</button>
+        <button role="tab" id="tReplies" aria-selected="false" type="button">Replies<span class="badge" id="repBadge" hidden></span></button>
+          <button role="tab" id="tSettings" aria-selected="false" type="button" hidden>Settings</button>
+      </div>
+      <button class="ghost" id="lockBtn" type="button" style="flex:0 0 auto">Lock</button>
+    </div>
+  </div>
+
+  <!-- COUNTER -->
+  <div id="pCounter" class="grid">
+    <div class="panel">
+      <form id="findForm" class="row" autocomplete="off">
+        <div style="flex:3 1 200px"><label for="phone">Cell number or car registration</label><input id="phone" type="text" autocapitalize="characters" placeholder="078 123 4567 or CA 123-456"></div>
+        <button type="submit" style="flex:0 0 auto" id="findBtn">Find</button>
+      </form>
+      <div class="err" id="findErr" role="alert"></div>
+      <div class="banner" id="setupBanner" hidden></div>
+
+      <div id="emptyCard" class="card">
+        <p class="small">Type the customer's cell number or car registration and tap Find. New customers get a sign-up form. Returning customers show their loyalty card.</p>
+      </div>
+
+      <div id="newCard" class="card" hidden>
+        <h3>New customer · <span class="mono" id="newNum"></span></h3>
+        <div><label for="newName">First name</label><input id="newName" type="text" placeholder="e.g. Naledi" maxlength="40"></div>
+        <div><label for="newPlate">Car registration (optional)</label><input id="newPlate" type="text" autocapitalize="characters" placeholder="e.g. CA 123-456" maxlength="14"></div>
+        <label class="check"><input type="checkbox" id="newConsent"> Customer agreed we can save their number for the rewards program</label>
+        <label class="check"><input type="checkbox" id="newWa" checked> Customer wants WhatsApp updates</label>
+      </div>
+
+      <div id="custCard" class="card" hidden>
+        <div class="card-head">
+          <div><div class="cust-name" id="cName"></div><div class="mono" id="cNum"></div></div>
+          <div class="status" id="cStatus"></div>
+        </div>
+        <div class="stamps" id="stamps" aria-label="Loyalty card"></div>
+        <div class="cars" id="cars"></div>
+        <form class="row" id="carForm" autocomplete="off">
+          <div style="flex:2 1 160px"><label for="carInput" class="small" style="font-weight:500">Add a car</label><input id="carInput" type="text" autocapitalize="characters" placeholder="Registration" maxlength="14"></div>
+          <button type="submit" class="ghost" style="flex:0 0 auto">Add car</button>
+        </form>
+      </div>
+
+      <!-- this visit: wash type, staff, car -->
+      <div id="visitBox" class="card" hidden>
+        <div class="pick" id="typePick"><div class="pick-label">Wash type</div><div class="chips" id="typeChips"></div></div>
+        <div class="pick" id="staffPick"><div class="pick-label">Washed by</div><div class="chips" id="staffChips"></div></div>
+        <div class="pick" id="carPick" hidden><div class="pick-label">Which car</div><div class="chips" id="carChips"></div></div>
+        <button id="newBtn" type="button" hidden disabled>Add customer and record first wash</button>
+        <div class="row" id="washRow">
+          <button id="plusBtn" type="button">Record wash</button>
+          <button id="freeBtn" type="button" class="free" disabled>Give Free Wash</button>
+        </div>
+      </div>
+
+      <div id="custTools" class="card" hidden>
+        <button id="readyBtn" type="button" class="ghost">🚗 Car is ready for collection</button>
+        <div class="small" id="cMeta"></div>
+        <div class="row" style="align-items:center">
+          <label class="check" style="flex:1 1 180px"><input type="checkbox" id="cWa"> WhatsApp updates</label>
+          <button id="minusBtn" type="button" class="ghost" style="flex:0 0 auto">Undo last wash</button>
+          <button id="delBtn" type="button" class="danger" style="flex:0 0 auto">Delete customer</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;gap:18px;min-width:0">
+      <div class="panel">
+        <h2>WhatsApp message</h2>
+        <div class="phone"><div class="bubble empty" id="bubble">The customer's message appears here after you record a wash.</div></div>
+        <div class="send-state" id="sendState"></div>
+        <div class="row" id="manualRow" hidden>
+          <a class="btn wa" id="waLink" href="#" target="_blank" rel="noopener">Open in WhatsApp</a>
+          <button class="ghost" id="copyBtn" type="button">Copy message</button>
+        </div>
+        <p class="small" id="waNote"></p>
+      </div>
+      <div class="panel">
+        <h2>Today</h2>
+        <div class="stats">
+          <div class="stat"><b id="stTake">R0</b><span>Takings</span></div>
+          <div class="stat"><b id="stWash">0</b><span>Paid washes</span></div>
+          <div class="stat"><b id="stFree">0</b><span>Free washes</span></div>
+        </div>
+        <div class="grid" style="gap:14px">
+          <div><div class="pick-label" style="margin-bottom:4px">By staff</div><div class="breakdown" id="byStaff"><span class="small">–</span></div></div>
+          <div><div class="pick-label" style="margin-bottom:4px">By wash type</div><div class="breakdown" id="byType"><span class="small">–</span></div></div>
+        </div>
+        <p class="small" id="stNewLine"></p>
+        <ul class="log" id="todayLog"><li class="small">No washes recorded yet today.</li></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- CUSTOMERS -->
+  <div id="pCustomers" class="panel" hidden>
+    <div class="card-head">
+      <h2>Customers <span class="small" id="custCount"></span></h2>
+      <div style="flex:0 1 260px;min-width:0"><label for="filter" class="small" style="font-weight:500">Search name or number</label><input id="filter" type="text"></div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Number</th><th>Cars</th><th>Card</th><th>Total washes</th><th>Last visit</th></tr></thead>
+        <tbody id="custRows"></tbody>
+      </table>
+    </div>
+    <p class="small" id="custEmpty" hidden>No customers yet. Add the first one from the Counter tab.</p>
+  </div>
+
+  <!-- REPLIES -->
+  <div id="pReplies" class="panel" hidden>
+    <h2>WhatsApp replies</h2>
+    <p class="small">Messages customers sent back to the automatic WhatsApp number. They got an automatic answer pointing them to <span id="chatNo">078 667 7610</span>. Anyone who replied STOP no longer gets loyalty messages.</p>
+    <ul class="replies" id="replyList"><li class="small">No replies yet.</li></ul>
+  </div>
+
+  <!-- SETTINGS (owner) -->
+  <div id="pSettings" class="grid" hidden>
+    <div class="panel" style="grid-column:1/-1">
+      <h2>Wash types and prices</h2>
+      <p class="small">Stamps = how many stamps the wash adds to the loyalty card. For example, a valet could count as 2.</p>
+      <div id="typeRows" style="display:grid;gap:8px"></div>
+      <button type="button" class="ghost" id="addType" style="justify-self:start">+ Add wash type</button>
+      <h2 style="margin-top:8px">Staff</h2>
+      <div id="staffRows" style="display:grid;gap:8px"></div>
+      <button type="button" class="ghost" id="addStaff" style="justify-self:start">+ Add staff member</button>
+      <button type="button" id="saveCatalog" style="justify-self:start">Save wash types and staff</button>
+      <div id="catalogMsg" class="err" role="status"></div>
+    </div>
+    <div class="panel">
+      <h2>Change staff PIN</h2>
+      <div><label for="newPin">New 4-digit staff PIN</label><input id="newPin" type="password" inputmode="numeric" maxlength="4" class="pin-input" autocomplete="new-password"></div>
+      <div><label for="newPin2">Type it again</label><input id="newPin2" type="password" inputmode="numeric" maxlength="4" class="pin-input" autocomplete="new-password"></div>
+      <button id="newPinBtn" type="button">Change PIN</button>
+      <div id="newPinMsg" class="err" role="status"></div>
+      <p class="small">Changing the PIN signs out every staff phone until they enter the new one.</p>
+    </div>
+    <div class="panel">
+      <h2>WhatsApp</h2>
+      <p id="waStatus"></p>
+      <p class="small">Automatic sending is switched on in the Azure settings once Meta approves the message templates. Until then, staff send each message with the Open in WhatsApp button.</p>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+(function(){
+  const GOAL=10, PAID=9, IDLE_MS=15*60*1000;
+  const $=id=>document.getElementById(id);
+  let session=null, cfg=null, current=null, pendingNew=null, pendingPlate="", busy=false, lastText="", lastActivity=Date.now();
+  let customers=[], sel={type:null,staff:null,plate:null}, editTypes=[], editStaff=[];
+
+  // ---------- helpers ----------
+  function norm(s){ let d=String(s).replace(/\D/g,""); if(d.length===10&&d[0]==="0") d="27"+d.slice(1); return /^27[6-8]\d{8}$/.test(d)?d:null; }
+  function normPlate(s){ const p=String(s||"").replace(/[^a-z0-9]/gi,"").toUpperCase(); return p.length>=2&&p.length<=10&&/[A-Z]/.test(p)?p:null; }
+  function pretty(k){ const l="0"+k.slice(2); return l.slice(0,3)+" "+l.slice(3,6)+" "+l.slice(6); }
+  function rand(n){ n=Number(n)||0; return "R"+n.toLocaleString("en-ZA",{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2}); }
+  function timeOf(s){ return new Date(s*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}); }
+  function ago(s){
+    if(!s) return "–";
+    const d=new Date(s*1000), now=new Date();
+    if(d.toDateString()===now.toDateString()) return "Today";
+    const days=Math.round((now-d)/86400000);
+    if(days<=1) return "Yesterday";
+    if(days<60) return days+" days ago";
+    return d.toLocaleDateString();
+  }
+  function types(){ return (cfg&&cfg.catalog&&cfg.catalog.types)||[]; }
+  function staff(){ return (cfg&&cfg.catalog&&cfg.catalog.staff)||[]; }
+  let toastT; function toast(t){ const el=$("toast"); el.textContent=t; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>el.hidden=true,2800); }
+  function store(k,v){ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,typeof v==="string"?v:JSON.stringify(v)); }catch(e){} }
+  function read(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function loadSession(){ try{ const s=JSON.parse(read("mw-session")||"null"); return s&&s.expires*1000>Date.now()?s:null; }catch(e){ return null; } }
+  function el(tag,cls,text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
+
+  async function api(method,path,body){
+    let r;
+    try{
+      r=await fetch("/api/"+path,{method,headers:{"Content-Type":"application/json","X-Session":session?session.token:""},body:body?JSON.stringify(body):undefined});
+    }catch(e){ throw new Error("No connection. Check the phone's data or Wi-Fi."); }
+    let data={}; try{ data=await r.json(); }catch(e){}
+    if(r.status===401 && path!=="login"){ lock(data.error||"Enter the PIN again."); throw new Error(data.error||"Locked"); }
+    if(!r.ok) throw new Error(data.error||"Something went wrong. Try again.");
+    return data;
+  }
+
+  // ---------- lock / unlock ----------
+  function lock(msg){
+    session=null; store("mw-session",null);
+    $("sApp").hidden=true; $("sLock").hidden=false;
+    $("lockErr").textContent=msg||"";
+    setTimeout(()=>$("lockPin").focus(),50);
+  }
+  $("lockForm").addEventListener("submit",async e=>{
+    e.preventDefault();
+    const pin=$("lockPin").value.trim(); if(!pin) return;
+    $("lockBtnGo").disabled=true; $("lockErr").textContent="";
+    try{ session=await api("POST","login",{pin}); store("mw-session",session); $("lockPin").value=""; await enter(); }
+    catch(err){ $("lockErr").textContent=err.message; $("lockPin").value=""; }
+    $("lockBtnGo").disabled=false;
+  });
+  $("lockBtn").onclick=()=>lock();
+  ["pointerdown","keydown"].forEach(ev=>document.addEventListener(ev,()=>{lastActivity=Date.now();},{passive:true}));
+  setInterval(()=>{ if(session && Date.now()-lastActivity>IDLE_MS) lock("Locked after 15 minutes without use."); },30000);
+
+  async function enter(){
+    cfg=await api("GET","config");
+    $("sLock").hidden=true; $("sApp").hidden=false;
+    $("whoAmI").textContent=cfg.role==="admin"?"Owner":"Staff";
+    $("tSettings").hidden=cfg.role!=="admin";
+    $("waStatus").textContent=cfg.autoWhatsApp?"✅ Automatic sending is on. Card messages go out by themselves.":"Automatic sending is off. Staff send messages with the Open in WhatsApp button.";
+    renderBanner(); loadEditors(); clearMessage(); render(); refreshToday(); refreshReplies(false);
+  }
+  function renderBanner(){
+    const b=$("setupBanner");
+    if(types().length&&staff().length){ b.hidden=true; return; }
+    b.hidden=false;
+    const missing=!types().length&&!staff().length?"wash types and staff names":!types().length?"wash types and prices":"staff names";
+    b.textContent=cfg.role==="admin"
+      ? "Add your "+missing+" in the Settings tab. Staff then pick them for every wash."
+      : "The owner hasn't added "+missing+" yet. Washes are recorded without them for now.";
+  }
+
+  // ---------- tabs ----------
+  const tabs={tCounter:"pCounter",tCustomers:"pCustomers",tReplies:"pReplies",tSettings:"pSettings"};
+  Object.keys(tabs).forEach(t=>$(t).onclick=()=>{
+    Object.entries(tabs).forEach(([b,p])=>{ $(b).setAttribute("aria-selected",b===t); $(p).hidden=b!==t; });
+    if(t==="tCustomers") refreshCustomers();
+    if(t==="tSettings") loadEditors();
+    if(t==="tReplies") refreshReplies(true);
+  });
+
+  // ---------- find ----------
+  $("findForm").addEventListener("submit",async e=>{
+    e.preventDefault();
+    $("findErr").textContent="";
+    const raw=$("phone").value, k=norm(raw), p=k?null:normPlate(raw);
+    if(!k&&!p){ $("findErr").textContent="Enter a cell number (078 123 4567) or a car registration."; return; }
+    await openKey(k||p);
+  });
+
+  function resetSel(){
+    const t=types(), s=staff();
+    sel.type = t.length===1 ? t[0].id : null;
+    const remembered=read("mw-staff");
+    sel.staff = s.some(x=>x.id===remembered) ? remembered : (s.length===1 ? s[0].id : null);
+    sel.plate = current && current.cars.length===1 ? current.cars[0] : null;
+  }
+
+  async function openKey(key){
+    clearMessage();
+    $("findBtn").disabled=true;
+    try{
+      const r=await api("GET","customers/"+encodeURIComponent(key));
+      if(r.customer){
+        current=r.customer; pendingNew=null; pendingPlate=""; $("phone").value=pretty(current.phone);
+      } else if(r.phone){
+        current=null; pendingNew=r.phone; $("phone").value=pretty(r.phone);
+        $("newNum").textContent=pretty(r.phone); $("newName").value=""; $("newPlate").value=pendingPlate;
+        $("newConsent").checked=false; $("newWa").checked=true; pendingPlate="";
+        setTimeout(()=>$("newName").focus(),30);
+      } else {
+        current=null; pendingNew=null; pendingPlate=r.plate; $("phone").value="";
+        $("findErr").textContent="No customer has registration "+r.plate+". Type their cell number to sign them up. The car will be added to the new customer.";
+        $("phone").focus();
+      }
+      resetSel();
+    }catch(err){ $("findErr").textContent=err.message; }
+    $("findBtn").disabled=false;
+    render();
+  }
+
+  // ---------- new customer ----------
+  $("newConsent").onchange=()=>renderVisit();
+  $("newBtn").onclick=async ()=>{
+    if(busy||!pendingNew) return;
+    busy=true; renderVisit();
+    try{
+      const r=await api("POST","customers",{phone:pendingNew,name:$("newName").value.trim(),plate:$("newPlate").value.trim(),
+        wa:$("newWa").checked,consent:$("newConsent").checked,type:sel.type,staff:sel.staff});
+      current=r.customer; pendingNew=null;
+      showMessage(r.message); toast(current.name+" added with their first wash");
+      refreshToday(); resetSel();
+    }catch(err){ toast(err.message); }
+    busy=false; render();
+  };
+
+  // ---------- visit actions ----------
+  async function act(action){
+    if(busy||!current) return;
+    busy=true; renderVisit(); renderTools();
+    try{
+      const body=(action==="wash"||action==="free")?{type:sel.type,staff:sel.staff,plate:sel.plate}:undefined;
+      const r=await api("POST","customers/"+current.phone+"/"+action,body);
+      current=r.customer;
+      if(r.message) showMessage(r.message); else clearMessage();
+      if(action!=="ready") refreshToday();
+      if(action==="free") toast("Free Wash given. Card starts again.");
+      if(action==="undo") toast("Last wash undone");
+    }catch(err){ toast(err.message); }
+    busy=false; render();
+  }
+  $("plusBtn").onclick=()=>act("wash");
+  $("freeBtn").onclick=()=>act("free");
+  $("minusBtn").onclick=()=>act("undo");
+  $("readyBtn").onclick=()=>act("ready");
+
+  $("cWa").onchange=async ()=>{
+    if(!current) return;
+    const wa=$("cWa").checked;
+    try{ const r=await api("PATCH","customers/"+current.phone,{wa}); current=r.customer; toast(wa?"WhatsApp updates on":"WhatsApp updates off"); }
+    catch(err){ toast(err.message); $("cWa").checked=!wa; }
+  };
+
+  // cars
+  $("carForm").addEventListener("submit",async e=>{
+    e.preventDefault();
+    if(!current) return;
+    const p=normPlate($("carInput").value);
+    if(!p){ toast("Type the registration with letters and numbers."); return; }
+    try{ const r=await api("POST","customers/"+current.phone+"/cars",{plate:p}); current=r.customer; $("carInput").value=""; sel.plate=p; toast("Car "+p+" added"); }
+    catch(err){ toast(err.message); }
+    render();
+  });
+  async function removeCar(p){
+    try{ const r=await api("DELETE","customers/"+current.phone+"/cars/"+encodeURIComponent(p)); current=r.customer; if(sel.plate===p) sel.plate=current.cars.length===1?current.cars[0]:null; toast("Car "+p+" removed"); }
+    catch(err){ toast(err.message); }
+    render();
+  }
+
+  let delArmed=null;
+  $("delBtn").onclick=async ()=>{
+    if(!current) return;
+    if(delArmed!==current.phone){
+      delArmed=current.phone; $("delBtn").textContent="Tap again to delete";
+      setTimeout(()=>{ delArmed=null; $("delBtn").textContent="Delete customer"; },4000);
+      return;
+    }
+    try{ await api("DELETE","customers/"+current.phone); toast(current.name+" deleted"); current=null; $("phone").value=""; clearMessage(); }
+    catch(err){ toast(err.message); }
+    delArmed=null; $("delBtn").textContent="Delete customer"; render();
+  };
+
+  // ---------- render counter ----------
+  function chip(label,sub,pressed,onclick){
+    const b=el("button","chip"); b.type="button"; b.setAttribute("aria-pressed",pressed?"true":"false");
+    b.appendChild(el("span",null,label)); if(sub) b.appendChild(el("small",null,sub));
+    b.onclick=onclick; return b;
+  }
+  function selectedType(){ return types().find(t=>t.id===sel.type)||null; }
+  function visitReady(){
+    return (!types().length||selectedType()) && (!staff().length||staff().some(s=>s.id===sel.staff)) &&
+           (!current||current.cars.length<=1||sel.plate);
+  }
+  function renderVisit(){
+    const show=!!(current||pendingNew);
+    $("visitBox").hidden=!show; if(!show) return;
+    const tc=$("typeChips"); tc.innerHTML="";
+    types().forEach(t=>tc.appendChild(chip(t.name, rand(t.price)+(t.stamps>1?" · "+t.stamps+" stamps":""), sel.type===t.id, ()=>{ sel.type=t.id; renderVisit(); })));
+    $("typePick").hidden=!types().length;
+    const sc=$("staffChips"); sc.innerHTML="";
+    staff().forEach(s=>sc.appendChild(chip(s.name,null,sel.staff===s.id,()=>{ sel.staff=s.id; store("mw-staff",s.id); renderVisit(); })));
+    $("staffPick").hidden=!staff().length;
+    const cars=current?current.cars:[];
+    $("carPick").hidden=cars.length<2;
+    const cc=$("carChips"); cc.innerHTML="";
+    cars.forEach(p=>cc.appendChild(chip(p,null,sel.plate===p,()=>{ sel.plate=p; renderVisit(); })));
+    const ready=visitReady(), t=selectedType();
+    $("newBtn").hidden=!pendingNew; $("washRow").hidden=!!pendingNew;
+    $("newBtn").disabled=busy||!ready||!$("newConsent").checked;
+    if(current){
+      $("plusBtn").textContent="Record wash"+(t?" · "+rand(t.price):"")+(t&&t.stamps>1?" (+"+t.stamps+" stamps)":"");
+      $("plusBtn").disabled=busy||!ready||current.count>=PAID;
+      $("freeBtn").disabled=busy||!ready||current.count<PAID;
+    }
+  }
+  function renderTools(){
+    $("custTools").hidden=!current; if(!current) return;
+    $("minusBtn").disabled=busy||!current.canUndo;
+    $("readyBtn").disabled=busy;
+  }
+  function render(){
+    $("newCard").hidden=!pendingNew;
+    $("custCard").hidden=!current;
+    $("emptyCard").hidden=!!(current||pendingNew);
+    if(current){
+      const c=current;
+      $("cName").textContent=c.name;
+      $("cNum").textContent=pretty(c.phone);
+      const st=$("stamps"); st.innerHTML="";
+      for(let i=1;i<=GOAL;i++){
+        const s=el("div");
+        if(i===GOAL){ s.className="stamp free"+(c.count>=PAID?" ready":""); s.textContent="FREE WASH"; }
+        else{ s.className="stamp"+(i<=c.count?" on":""); s.appendChild(el("span",null,i)); }
+        st.appendChild(s);
+      }
+      const ready=c.count>=PAID;
+      $("cStatus").textContent=ready?"This wash is a FREE WASH":(PAID-c.count)+" paid washes to go";
+      $("cStatus").className="status"+(ready?" ready":"");
+      const cars=$("cars"); cars.innerHTML="";
+      if(!c.cars.length) cars.appendChild(el("span","small","No car registration saved yet."));
+      c.cars.forEach(p=>{
+        const tag=el("span","plate",p);
+        const x=el("button",null,"×"); x.type="button"; x.setAttribute("aria-label","Remove car "+p); x.onclick=()=>removeCar(p);
+        tag.appendChild(x); cars.appendChild(tag);
+      });
+      $("cMeta").textContent="Total washes: "+c.total+" · Free Washes received: "+c.freeWashes+" · Last visit: "+ago(c.lastVisit);
+      $("cWa").checked=!!c.wa;
+    }
+    renderVisit(); renderTools();
+  }
+
+  // ---------- message panel ----------
+  function showMessage(m){
+    lastText=m.text;
+    const b=$("bubble"); b.className="bubble"; b.innerHTML="";
+    if(m.card!==null&&m.card!==undefined){ const img=el("img"); img.src="cards/card-"+m.card+".png"; img.alt="Loyalty card with "+m.card+" stamps"; b.appendChild(img); }
+    b.appendChild(el("div","t",m.text));
+    const s=$("sendState");
+    if(m.sent){ s.className="send-state sent"; s.textContent="✓ Sent on WhatsApp"; $("manualRow").hidden=true; $("waNote").textContent=""; return; }
+    if(!m.waLink){ s.className="send-state"; s.textContent=m.error||"Nothing to send."; $("manualRow").hidden=true; $("waNote").textContent=""; return; }
+    s.className="send-state"+(m.error?" fail":""); s.textContent=m.error||"";
+    $("waLink").href=m.waLink; $("manualRow").hidden=false;
+    $("waNote").textContent="Tap Open in WhatsApp. It opens a chat with "+(current?pretty(current.phone):"the customer")+" with the message typed. Press send."+(m.card!=null?" The card picture is only included when automatic sending is on.":"");
+  }
+  function clearMessage(){
+    lastText="";
+    const b=$("bubble"); b.className="bubble empty"; b.textContent="The customer's message appears here after you record a wash.";
+    $("sendState").textContent=""; $("manualRow").hidden=true; $("waNote").textContent="";
+  }
+  $("copyBtn").onclick=()=>{
+    try{ navigator.clipboard.writeText(lastText).then(()=>toast("Message copied"),()=>toast("Copy blocked. Select the message text instead.")); }
+    catch(e){ toast("Copy blocked. Select the message text instead."); }
+  };
+
+  // ---------- today ----------
+  function breakdown(box,pairs){
+    box.innerHTML="";
+    if(!pairs.length){ box.appendChild(el("span","small","–")); return; }
+    pairs.forEach(([name,n])=>{ const d=el("div"); d.appendChild(el("span",null,name)); d.appendChild(el("b",null,n)); box.appendChild(d); });
+  }
+  async function refreshToday(){
+    try{
+      const t=await api("GET","today");
+      $("stTake").textContent=rand(t.takings); $("stWash").textContent=t.paid; $("stFree").textContent=t.free;
+      $("stNewLine").textContent=t.new?("New customers today: "+t.new):"";
+      breakdown($("byStaff"),t.byStaff); breakdown($("byType"),t.byType);
+      const ul=$("todayLog"); ul.innerHTML="";
+      if(!t.log.length){ ul.appendChild(el("li","small","No washes recorded yet today.")); return; }
+      t.log.forEach(r=>{
+        const parts=[r.name];
+        if(r.type==="free") parts.push("Free Wash"+(r.washType?" ("+r.washType+")":""));
+        else parts.push((r.washType||"Wash")+(r.washType?" "+rand(r.price):"")+(r.type==="new"?" · new customer":""));
+        if(r.staff) parts.push(r.staff);
+        if(r.plate) parts.push(r.plate);
+        const li=el("li",r.void?"void":null);
+        li.appendChild(el("time",null,timeOf(r.at)));
+        li.appendChild(el("span",null,parts.join(" · ")+(r.void?" (undone)":"")));
+        ul.appendChild(li);
+      });
+    }catch(e){}
+  }
+  setInterval(()=>{ if(session&&!document.hidden){ refreshToday(); refreshReplies(false); refreshConfig(); } },60000);
+  // pick up the owner's Settings changes (wash types, staff) without logging in again
+  async function refreshConfig(){
+    try{
+      const c=await api("GET","config");
+      if(JSON.stringify(c.catalog)!==JSON.stringify(cfg.catalog)){ cfg=c; renderBanner(); if(!current&&!pendingNew) resetSel(); render(); }
+    }catch(e){}
+  }
+
+  // ---------- replies ----------
+  function when(s){ const d=new Date(s*1000); return d.toDateString()===new Date().toDateString()?timeOf(s):d.toLocaleDateString()+" "+timeOf(s); }
+  async function refreshReplies(markSeen){
+    try{
+      const r=await api("GET","replies");
+      const b=$("repBadge"); b.hidden=!r.unread; b.textContent=r.unread;
+      const ul=$("replyList"); ul.innerHTML="";
+      if(!r.replies.length){ ul.appendChild(el("li","small","No replies yet.")); }
+      r.replies.forEach(x=>{
+        const li=el("li","reply"+(x.unread?" unread":""));
+        const head=el("div","reply-head");
+        const who=el("span"); who.appendChild(el("b",null,x.name||"Unknown")); who.appendChild(document.createTextNode(" · "+pretty(x.phone)));
+        if(x.kind==="stop") who.appendChild(el("span","tag stop"," Opted out ")); 
+        if(x.kind==="start") who.appendChild(el("span","tag start"," Opted back in "));
+        if(!x.customer) who.appendChild(el("span","tag"," Not a customer "));
+        head.appendChild(who); head.appendChild(el("span","small",when(x.at)));
+        li.appendChild(head); li.appendChild(el("div","reply-text",x.text));
+        if(x.customer){ const o=el("button","ghost","Open customer"); o.type="button"; o.style.justifySelf="start"; o.onclick=()=>{ $("tCounter").click(); openKey(x.phone); }; li.appendChild(o); }
+        ul.appendChild(li);
+      });
+      if(markSeen&&r.unread){ await api("POST","replies/seen"); b.hidden=true; }
+    }catch(e){}
+  }
+
+  // ---------- customers ----------
+  async function refreshCustomers(){
+    try{ customers=(await api("GET","customers")).customers; renderCustomers(); }
+    catch(err){ toast(err.message); }
+  }
+  function renderCustomers(){
+    const q=$("filter").value.trim().toLowerCase(), qd=q.replace(/\D/g,""), qp=q.replace(/[^a-z0-9]/g,"").toUpperCase();
+    $("custCount").textContent="("+customers.length+")";
+    $("custEmpty").hidden=customers.length>0;
+    const tb=$("custRows"); tb.innerHTML="";
+    customers.filter(c=>!q||c.name.toLowerCase().includes(q)||(qd&&("0"+c.phone.slice(2)).includes(qd))||(qp&&c.cars.some(p=>p.includes(qp)))).slice(0,500).forEach(c=>{
+      const tr=el("tr"); tr.tabIndex=0;
+      tr.appendChild(el("td",null,c.name));
+      tr.appendChild(el("td","mono",pretty(c.phone)));
+      tr.appendChild(el("td","mono",c.cars.join(", ")||"–"));
+      const card=el("td");
+      if(c.count>=PAID) card.appendChild(el("span","pill","Free Wash due")); else card.textContent=c.count+" / "+PAID;
+      tr.appendChild(card);
+      tr.appendChild(el("td","mono",String(c.total)));
+      tr.appendChild(el("td",null,ago(c.lastVisit)));
+      const open=()=>{ $("tCounter").click(); openKey(c.phone); };
+      tr.onclick=open; tr.onkeydown=e=>{ if(e.key==="Enter") open(); };
+      tb.appendChild(tr);
+    });
+  }
+  $("filter").oninput=renderCustomers;
+
+  // ---------- settings: wash types & staff ----------
+  function loadEditors(){
+    editTypes=types().map(t=>({...t})); editStaff=staff().map(s=>({...s}));
+    renderEditors();
+  }
+  function input(type,value,label,oninput,attrs){
+    const i=el("input"); i.type=type; i.value=value; i.setAttribute("aria-label",label); i.placeholder=label;
+    Object.assign(i,attrs||{}); i.oninput=()=>oninput(i.value); return i;
+  }
+  function renderEditors(){
+    const tr=$("typeRows"); tr.innerHTML="";
+    if(!editTypes.length) tr.appendChild(el("p","small","No wash types yet."));
+    editTypes.forEach((t,i)=>{
+      const row=el("div","edit-row");
+      row.appendChild(input("text",t.name||"","Wash type name",v=>t.name=v,{maxLength:30}));
+      row.appendChild(input("number",t.price==null?"":t.price,"Price (R)",v=>t.price=v,{min:0,step:"0.01",inputMode:"decimal"}));
+      const s=el("select","st"); s.setAttribute("aria-label","Stamps");
+      [1,2,3].forEach(n=>{ const o=el("option",null,n+(n===1?" stamp":" stamps")); o.value=n; if((t.stamps||1)===n) o.selected=true; s.appendChild(o); });
+      s.onchange=()=>t.stamps=Number(s.value); row.appendChild(s);
+      const x=el("button","ghost","✕"); x.type="button"; x.setAttribute("aria-label","Remove "+(t.name||"wash type")); x.onclick=()=>{ editTypes.splice(i,1); renderEditors(); };
+      row.appendChild(x); tr.appendChild(row);
+    });
+    const sr=$("staffRows"); sr.innerHTML="";
+    if(!editStaff.length) sr.appendChild(el("p","small","No staff yet."));
+    editStaff.forEach((s,i)=>{
+      const row=el("div","edit-row staff");
+      row.appendChild(input("text",s.name||"","Staff member's name",v=>s.name=v,{maxLength:30}));
+      const x=el("button","ghost","✕"); x.type="button"; x.setAttribute("aria-label","Remove "+(s.name||"staff member")); x.onclick=()=>{ editStaff.splice(i,1); renderEditors(); };
+      row.appendChild(x); sr.appendChild(row);
+    });
+  }
+  $("addType").onclick=()=>{ editTypes.push({name:"",price:"",stamps:1}); renderEditors(); $("typeRows").querySelector(".edit-row:last-child input").focus(); };
+  $("addStaff").onclick=()=>{ editStaff.push({name:""}); renderEditors(); $("staffRows").querySelector(".edit-row:last-child input").focus(); };
+  $("saveCatalog").onclick=async ()=>{
+    const m=$("catalogMsg"); m.className="err"; m.textContent="";
+    try{
+      cfg.catalog=await api("POST","settings/catalog",{types:editTypes,staff:editStaff});
+      loadEditors(); renderBanner(); resetSel(); render();
+      m.className="ok"; m.textContent="Saved. Staff see the new list next time they look up a customer.";
+    }catch(err){ m.textContent=err.message; }
+  };
+
+  // ---------- settings: PIN ----------
+  $("newPinBtn").onclick=async ()=>{
+    const p1=$("newPin").value, p2=$("newPin2").value, m=$("newPinMsg");
+    m.className="err";
+    if(!/^\d{4}$/.test(p1)){ m.textContent="The PIN must be exactly 4 numbers."; return; }
+    if(p1!==p2){ m.textContent="The two PINs don't match."; return; }
+    try{ await api("POST","settings/staff-pin",{pin:p1}); $("newPin").value=""; $("newPin2").value=""; m.className="ok"; m.textContent="PIN changed. Tell your staff the new PIN."; }
+    catch(err){ m.textContent=err.message; }
+  };
+
+  // ---------- start ----------
+  session=loadSession();
+  if(session){ enter().catch(()=>{}); } else lock();
+})();
+</script>
+</body>
+</html>

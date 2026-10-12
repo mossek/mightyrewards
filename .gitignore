@@ -1,0 +1,13 @@
+# secrets: never commit
+PINS*.txt
+*.env
+local.settings.json
+
+# built / downloaded files
+api/.python_packages/
+__pycache__/
+*.pyc
+
+# editor / tool folders
+.claude/
+.vscode/
