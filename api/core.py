@@ -85,6 +85,15 @@ def sa_day(ts):
     return datetime.fromtimestamp(ts, SA_TZ).strftime("%Y-%m-%d")
 
 
+_EMOJI = re.compile("[\U0001F000-\U0001FFFF☀-➿️‍]")
+
+
+def strip_emoji(text):
+    """WhatsApp Desktop turns emojis in wa.me links into '??', so the manual message goes without them."""
+    text = _EMOJI.sub("", text)
+    return re.sub(r"[ \t]+(?=\n|$)", "", text)      # no trailing spaces where an emoji was
+
+
 def render(template, params):
     text = TEMPLATES[template]["body"]
     for i, p in enumerate(params, start=1):
@@ -534,7 +543,7 @@ class Rewards:
         # The "Open in WhatsApp" message can't attach a picture, but WhatsApp shows the card page's
         # og:image as a large preview, so the customer still sees their stamp card.
         card_link = "%s/c/%d/" % (self.cfg["public_url"], card) if card is not None and self.cfg["public_url"] else ""
-        manual = (text + ("\n\nYour loyalty card: " + card_link if card_link else "")
+        manual = (strip_emoji(text) + ("\n\nYour loyalty card: " + card_link if card_link else "")
                   + ("\n\nRate our service: " + self.cfg["review_url"] if self.cfg["review_url"] else ""))
         out = {"template": template, "text": text if self.sender is not None else manual,
                "image": image, "card": card, "cardLink": card_link,

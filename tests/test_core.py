@@ -141,8 +141,11 @@ class CardTests(unittest.TestCase):
         # free method: the message carries the card page link so WhatsApp shows the card picture
         self.assertIn("Your loyalty card: https://example.test/c/2/", r["message"]["text"])
         self.assertIn("https%3A//example.test/c/2/", r["message"]["waLink"])
+        self.assertNotIn("%F0%9F", r["message"]["waLink"])       # no emojis: WhatsApp Desktop shows them as ??
+        self.assertIn("Hi Thabo\n\nYour Mighty", r["message"]["text"])
         r = svc.action("0821234567", "ready")
         self.assertNotIn("/c/", r["message"]["text"])            # "car ready" has no card
+        self.assertIn("at Mighty Car-Wash.\n\nRate our service", r["message"]["text"])
 
     def test_auto_send_and_fallback(self):
         sender = FakeSender()
