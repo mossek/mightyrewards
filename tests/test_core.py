@@ -138,6 +138,11 @@ class CardTests(unittest.TestCase):
         self.assertIn("Only 7 more", r["message"]["text"])
         self.assertNotIn("{{", r["message"]["text"])
         self.assertEqual(r["message"]["image"], "https://example.test/cards/card-2.png")
+        # free method: the message carries the card page link so WhatsApp shows the card picture
+        self.assertIn("Your loyalty card: https://example.test/c/2/", r["message"]["text"])
+        self.assertIn("https%3A//example.test/c/2/", r["message"]["waLink"])
+        r = svc.action("0821234567", "ready")
+        self.assertNotIn("/c/", r["message"]["text"])            # "car ready" has no card
 
     def test_auto_send_and_fallback(self):
         sender = FakeSender()

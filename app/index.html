@@ -577,7 +577,7 @@ tbody tr:hover{background:var(--raised)}
     if(!m.waLink){ s.className="send-state"; s.textContent=m.error||"Nothing to send."; $("manualRow").hidden=true; $("waNote").textContent=""; return; }
     s.className="send-state"+(m.error?" fail":""); s.textContent=m.error||"";
     $("waLink").href=m.waLink; $("manualRow").hidden=false;
-    $("waNote").textContent="Tap Open in WhatsApp. It opens a chat with "+(current?pretty(current.phone):"the customer")+" with the message typed. Press send."+(m.card!=null?" The card picture is only included when automatic sending is on.":"");
+    $("waNote").textContent="Tap Open in WhatsApp. It opens a chat with "+(current?pretty(current.phone):"the customer")+" with the message typed."+(m.cardLink?" Wait a second for the card picture to appear, then press send.":" Press send.");
   }
   function clearMessage(){
     lastText="";

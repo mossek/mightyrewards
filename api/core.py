@@ -531,8 +531,13 @@ class Rewards:
         image = None
         if TEMPLATES[template]["image"] and card is not None and self.cfg["public_url"]:
             image = "%s/cards/card-%d.png" % (self.cfg["public_url"], card)
-        manual = text + ("\n\nRate our service: " + self.cfg["review_url"] if self.cfg["review_url"] else "")
-        out = {"template": template, "text": text, "image": image, "card": card,
+        # The "Open in WhatsApp" message can't attach a picture, but WhatsApp shows the card page's
+        # og:image as a large preview, so the customer still sees their stamp card.
+        card_link = "%s/c/%d/" % (self.cfg["public_url"], card) if card is not None and self.cfg["public_url"] else ""
+        manual = (text + ("\n\nYour loyalty card: " + card_link if card_link else "")
+                  + ("\n\nRate our service: " + self.cfg["review_url"] if self.cfg["review_url"] else ""))
+        out = {"template": template, "text": text if self.sender is not None else manual,
+               "image": image, "card": card, "cardLink": card_link,
                "waLink": "https://wa.me/%s?text=%s" % (k, urllib.parse.quote(manual)),
                "auto": False, "sent": False, "error": None}
         if not c.get("wa", True):
