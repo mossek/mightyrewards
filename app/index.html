@@ -133,6 +133,30 @@ tbody tr:hover{background:var(--raised)}
 .hours-row input[type=time]{width:100%;font:inherit;padding:9px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
 .hours-row input[type=time]:disabled{opacity:.35}
 @media (max-width:480px){.hours-row{grid-template-columns:90px 70px minmax(0,1fr) minmax(0,1fr);font-size:14px}}
+.rep-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border-radius:0;background:transparent;color:var(--ink);font-weight:600;min-height:40px;padding:6px 16px}
+.seg button[aria-pressed=true]{background:var(--blue);color:var(--blue-ink)}
+.rep-nav{display:inline-flex;align-items:center;gap:6px}
+.rep-nav button{min-height:40px;padding:6px 12px}
+.rep-label{font-weight:800;font-size:17px;min-width:150px;text-align:center}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:640px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--raised);display:grid;gap:2px}
+.tile span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.tile b{font-size:26px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile small{font-size:12px;color:var(--muted)}
+.chart-wrap{position:relative}
+.chart-wrap svg{display:block;width:100%;height:auto;overflow:visible}
+.chart-wrap .axis{fill:var(--muted);font-size:11px;font-family:var(--mono)}
+.chart-wrap .grid{stroke:var(--line);stroke-width:1}
+.chart-wrap .bar{fill:var(--blue)}
+.chart-wrap .col:hover .bar,.chart-wrap .col:focus .bar{fill:var(--cyan)}
+.chart-wrap .col{outline:none}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);border-radius:8px;padding:6px 10px;font-size:13px;line-height:1.35;white-space:nowrap;transform:translate(-50%,-100%);z-index:2}
+.rep-table td.num,.rep-table th.num{text-align:right;font-variant-numeric:tabular-nums}
+.rep-table{min-width:0}
+details summary{cursor:pointer;color:var(--muted);font-size:14px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;font-size:14px;max-width:calc(100% - 32px);z-index:5}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:no-preference){.stamp{transition:background .2s,border-color .2s}}
@@ -159,6 +183,7 @@ tbody tr:hover{background:var(--raised)}
         <button role="tab" id="tCounter" aria-selected="true" type="button">Counter</button>
         <button role="tab" id="tCustomers" aria-selected="false" type="button">Customers</button>
         <button role="tab" id="tReplies" aria-selected="false" type="button">Replies<span class="badge" id="repBadge" hidden></span></button>
+          <button role="tab" id="tReports" aria-selected="false" type="button" hidden>Reports</button>
           <button role="tab" id="tSettings" aria-selected="false" type="button" hidden>Settings</button>
       </div>
       <button class="ghost" id="lockBtn" type="button" style="flex:0 0 auto">Lock</button>
@@ -273,6 +298,39 @@ tbody tr:hover{background:var(--raised)}
     <ul class="replies" id="replyList"><li class="small">No replies yet.</li></ul>
   </div>
 
+  <!-- REPORTS (owner) -->
+  <div id="pReports" class="panel" hidden>
+    <div class="rep-bar">
+      <div class="seg" role="group" aria-label="Report period">
+        <button type="button" id="repWeek" aria-pressed="true">Week</button>
+        <button type="button" id="repMonth" aria-pressed="false">Month</button>
+      </div>
+      <div class="rep-nav">
+        <button type="button" class="ghost" id="repPrev" aria-label="Previous period">&lsaquo;</button>
+        <div class="rep-label" id="repLabel">&ndash;</div>
+        <button type="button" class="ghost" id="repNext" aria-label="Next period">&rsaquo;</button>
+      </div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><span>Takings</span><b id="rTake">&ndash;</b><small id="rTakeD"></small></div>
+      <div class="tile"><span>Paid washes</span><b id="rPaid">&ndash;</b><small id="rPaidD"></small></div>
+      <div class="tile"><span>Free Washes</span><b id="rFree">&ndash;</b><small id="rFreeD"></small></div>
+      <div class="tile"><span>New customers</span><b id="rNew">&ndash;</b><small id="rNewD"></small></div>
+    </div>
+    <div>
+      <h3 style="margin-bottom:8px">Paid washes per day</h3>
+      <div class="chart-wrap" id="repChart"></div>
+      <details style="margin-top:8px"><summary>Show as table</summary>
+        <div class="tbl-wrap"><table class="rep-table"><thead><tr><th>Day</th><th class="num">Paid washes</th><th class="num">Free</th><th class="num">Takings</th></tr></thead><tbody id="repDays"></tbody></table></div>
+      </details>
+    </div>
+    <div class="grid" style="gap:18px">
+      <div><h3 style="margin-bottom:6px">By staff</h3><div class="tbl-wrap"><table class="rep-table"><thead><tr><th>Staff</th><th class="num">Washes</th><th class="num">Takings</th></tr></thead><tbody id="repStaff"></tbody></table></div></div>
+      <div><h3 style="margin-bottom:6px">By wash type</h3><div class="tbl-wrap"><table class="rep-table"><thead><tr><th>Wash type</th><th class="num">Washes</th><th class="num">Takings</th></tr></thead><tbody id="repTypes"></tbody></table></div></div>
+    </div>
+    <p class="small">Free Washes count as washes for staff but add R0 to takings. Undone washes are left out.</p>
+  </div>
+
   <!-- SETTINGS (owner) -->
   <div id="pSettings" class="grid" hidden>
     <div class="panel" style="grid-column:1/-1">
@@ -376,6 +434,7 @@ tbody tr:hover{background:var(--raised)}
     $("sLock").hidden=true; $("sApp").hidden=false;
     $("whoAmI").textContent=cfg.role==="admin"?"Owner":"Staff";
     $("tSettings").hidden=cfg.role!=="admin";
+    $("tReports").hidden=cfg.role!=="admin";
     $("waStatus").textContent=cfg.autoWhatsApp?"✅ Automatic sending is on. Card messages go out by themselves.":"Automatic sending is off. Staff send messages with the Open in WhatsApp button.";
     renderBanner(); loadEditors(); loadHours(); clearMessage(); render(); refreshToday(); refreshReplies(false);
   }
@@ -390,12 +449,13 @@ tbody tr:hover{background:var(--raised)}
   }
 
   // ---------- tabs ----------
-  const tabs={tCounter:"pCounter",tCustomers:"pCustomers",tReplies:"pReplies",tSettings:"pSettings"};
+  const tabs={tCounter:"pCounter",tCustomers:"pCustomers",tReplies:"pReplies",tReports:"pReports",tSettings:"pSettings"};
   Object.keys(tabs).forEach(t=>$(t).onclick=()=>{
     Object.entries(tabs).forEach(([b,p])=>{ $(b).setAttribute("aria-selected",b===t); $(p).hidden=b!==t; });
     if(t==="tCustomers") refreshCustomers();
     if(t==="tSettings"){ loadEditors(); loadHours(); }
     if(t==="tReplies") refreshReplies(true);
+    if(t==="tReports") loadReport();
   });
 
   // ---------- find ----------
@@ -729,6 +789,96 @@ tbody tr:hover{background:var(--raised)}
       m.className="ok"; m.textContent="Saved. Staff see the new list next time they look up a customer.";
     }catch(err){ m.textContent=err.message; }
   };
+
+  // ---------- reports (owner) ----------
+  let repPeriod="week", repDate=null, lastRep=null;
+  const iso=d=>d.toISOString().slice(0,10);
+  const fromIso=s=>{ const [y,m,d]=s.split("-").map(Number); return new Date(Date.UTC(y,m-1,d)); };
+  const addDays=(s,n)=>{ const d=fromIso(s); d.setUTCDate(d.getUTCDate()+n); return iso(d); };
+  const fmtDay=(s,opts)=>fromIso(s).toLocaleDateString("en-ZA",Object.assign({timeZone:"UTC"},opts));
+  function setPeriod(p){ repPeriod=p; $("repWeek").setAttribute("aria-pressed",p==="week"); $("repMonth").setAttribute("aria-pressed",p==="month"); loadReport(); }
+  $("repWeek").onclick=()=>setPeriod("week");
+  $("repMonth").onclick=()=>setPeriod("month");
+  $("repPrev").onclick=()=>{ if(lastRep){ repDate=addDays(lastRep.first,-1); loadReport(); } };
+  $("repNext").onclick=()=>{ if(lastRep){ repDate=addDays(lastRep.last,1); loadReport(); } };
+
+  function delta(cur,prev,money){
+    const word=repPeriod==="week"?"last week":"last month";
+    if(!prev&&!cur) return "Same as "+word;
+    if(!prev) return "\u25B2 up from "+(money?rand(0):"0")+" "+word;
+    const pct=Math.round((cur-prev)/prev*100);
+    if(pct===0) return "Same as "+word;
+    return (pct>0?"\u25B2 ":"\u25BC ")+Math.abs(pct)+"% vs "+word;
+  }
+  function niceMax(v){ if(v<=4) return 4; const p=Math.pow(10,Math.floor(Math.log10(v))); const n=v/p; return (n<=2?2:n<=5?5:10)*p; }
+
+  function drawChart(days){
+    const box=$("repChart"); box.innerHTML="";
+    const W=Math.max(300,Math.round(box.clientWidth||640)),H=220,L=34,R=8,T=10,B=26, n=days.length, pw=W-L-R, ph=H-T-B;   // drawn at real width so text stays 11px
+    const max=niceMax(Math.max.apply(null,days.map(d=>d.paid).concat([0]))), step=pw/n, bw=Math.max(4,Math.min(48,step-2));
+    const NS="http://www.w3.org/2000/svg";
+    const mk=(t,a)=>{ const e=document.createElementNS(NS,t); for(const k in a) e.setAttribute(k,a[k]); return e; };
+    const svg=mk("svg",{viewBox:"0 0 "+W+" "+H,role:"img","aria-label":"Paid washes per day"});
+    for(let i=0;i<=4;i++){
+      const v=max*i/4, y=T+ph-ph*i/4;
+      if(Number.isInteger(v)){
+        svg.appendChild(mk("line",{x1:L,x2:W-R,y1:y,y2:y,class:"grid"}));
+        const t=mk("text",{x:L-6,y:y+4,"text-anchor":"end",class:"axis"}); t.textContent=v; svg.appendChild(t);
+      }
+    }
+    const tip=el("div","tip"); tip.hidden=true; box.appendChild(tip);
+    days.forEach((d,i)=>{
+      const cx=L+step*i+step/2, h=ph*d.paid/max, x0=cx-bw/2, x1=cx+bw/2, yb=T+ph, yt=T+ph-h;
+      const g=mk("g",{class:"col",tabindex:"0"});
+      g.appendChild(mk("rect",{x:L+step*i,y:T,width:step,height:ph,fill:"transparent"}));   // hit target
+      if(d.paid>0){
+        const r=Math.min(4,bw/2,h);
+        g.appendChild(mk("path",{class:"bar",d:"M"+x0+","+yb+" V"+(yt+r)+" Q"+x0+","+yt+" "+(x0+r)+","+yt+" H"+(x1-r)+" Q"+x1+","+yt+" "+x1+","+(yt+r)+" V"+yb+" Z"}));
+      }
+      const dom=Number(d.day.slice(8));
+      if(repPeriod==="week"||[1,5,10,15,20,25,30].indexOf(dom)>=0){
+        const t=mk("text",{x:cx,y:H-8,"text-anchor":"middle",class:"axis"});
+        t.textContent=repPeriod==="week"?fmtDay(d.day,{weekday:"short"}):dom; g.appendChild(t);
+      }
+      const show=()=>{
+        tip.hidden=false;
+        tip.textContent=fmtDay(d.day,{weekday:"short",day:"numeric",month:"short"})+" \u00B7 "+d.paid+" paid"+(d.free?", "+d.free+" free":"")+" \u00B7 "+rand(d.takings);
+        const rect=box.getBoundingClientRect(), sc=rect.width/W;
+        tip.style.left=Math.min(Math.max(cx*sc,90),rect.width-90)+"px";
+        tip.style.top=(yt*sc-6)+"px";
+      };
+      g.addEventListener("pointerenter",show); g.addEventListener("focus",show);
+      g.addEventListener("pointerleave",()=>tip.hidden=true); g.addEventListener("blur",()=>tip.hidden=true);
+      svg.appendChild(g);
+    });
+    svg.appendChild(mk("line",{x1:L,x2:W-R,y1:T+ph,y2:T+ph,stroke:"currentColor","stroke-opacity":".35"}));
+    box.prepend(svg);
+  }
+  let resizeT; window.addEventListener("resize",()=>{ clearTimeout(resizeT); resizeT=setTimeout(()=>{ if(lastRep&&!$("pReports").hidden) drawChart(lastRep.days); },200); });
+  function fillTable(id,rows,cols){
+    const tb=$(id); tb.innerHTML="";
+    if(!rows.length){ const tr=el("tr"); const td=el("td","small","Nothing recorded"); td.colSpan=cols.length; tr.appendChild(td); tb.appendChild(tr); return; }
+    rows.forEach(r=>{ const tr=el("tr"); cols.forEach(c=>tr.appendChild(el("td",c[1]?"num":null,c[0](r)))); tb.appendChild(tr); });
+  }
+  async function loadReport(){
+    if(!repDate) repDate=new Date().toLocaleDateString("en-CA",{timeZone:"Africa/Johannesburg"});
+    try{
+      const r=await api("GET","reports/"+repPeriod+"/"+repDate); lastRep=r;
+      $("repLabel").textContent=repPeriod==="week"
+        ? fmtDay(r.first,{day:"numeric",month:"short"})+" \u2013 "+fmtDay(r.last,{day:"numeric",month:"short",year:"numeric"})
+        : fmtDay(r.first,{month:"long",year:"numeric"});
+      $("repNext").disabled=r.last>=r.today;
+      const t=r.totals,p=r.previous;
+      $("rTake").textContent=rand(t.takings); $("rTakeD").textContent=delta(t.takings,p.takings,true);
+      $("rPaid").textContent=t.paid; $("rPaidD").textContent=delta(t.paid,p.paid);
+      $("rFree").textContent=t.free; $("rFreeD").textContent=delta(t.free,p.free);
+      $("rNew").textContent=t.new; $("rNewD").textContent=delta(t.new,p.new);
+      drawChart(r.days);
+      fillTable("repDays",r.days,[[d=>fmtDay(d.day,{weekday:"short",day:"numeric",month:"short"})],[d=>String(d.paid),1],[d=>String(d.free),1],[d=>rand(d.takings),1]]);
+      fillTable("repStaff",r.byStaff,[[x=>x.name],[x=>String(x.washes),1],[x=>rand(x.takings),1]]);
+      fillTable("repTypes",r.byType,[[x=>x.name],[x=>String(x.washes),1],[x=>rand(x.takings),1]]);
+    }catch(err){ toast(err.message); }
+  }
 
   // ---------- settings: business hours ----------
   const DAYS=[["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],["thu","Thursday"],["fri","Friday"],["sat","Saturday"],["sun","Sunday"]];

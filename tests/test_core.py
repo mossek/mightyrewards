@@ -404,6 +404,68 @@ class HoursTests(unittest.TestCase):
                                                            ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}})
 
 
+class ReportTests(unittest.TestCase):
+    MON_10AM = 1792396800.0          # Monday 19 Oct 2026, 10:00 South African time
+
+    def setUp(self):
+        self.svc, self.clock = make()
+        cat = self.svc.save_catalog({"types": [{"name": "Normal", "price": 80}, {"name": "Premium", "price": 100}],
+                                     "staff": [{"name": "Sipho"}, {"name": "Lerato"}]})
+        self.normal, self.premium = cat["types"]
+        self.sipho, self.lerato = cat["staff"]
+
+    def wash(self, days_after_monday, phone, t, s, new=False):
+        self.clock.t = self.MON_10AM + days_after_monday * 86400
+        body = {"type": t["id"], "staff": s["id"]}
+        if new:
+            return self.svc.create_customer({"phone": phone, "name": "C", "consent": True, **body})
+        return self.svc.action(phone, "wash", body)
+
+    def test_week_and_month(self):
+        self.wash(-7, "0821111111", self.normal, self.sipho, new=True)        # previous week
+        self.wash(0, "0822222222", self.premium, self.lerato, new=True)       # Mon 19 Oct
+        self.wash(2, "0822222222", self.normal, self.sipho)                    # Wed 21 Oct
+        self.wash(2, "0821111111", self.normal, self.sipho)                    # Wed 21 Oct
+        self.wash(14, "0821111111", self.premium, self.sipho)                  # Mon 2 Nov
+        r = self.svc.action("0821111111", "undo")                              # undone: not counted
+
+        w = self.svc.report("week", "2026-10-21")
+        self.assertEqual((w["first"], w["last"]), ("2026-10-19", "2026-10-25"))
+        self.assertEqual(w["totals"], {"paid": 3, "free": 0, "new": 1, "takings": 260.0})
+        self.assertEqual(w["previous"]["paid"], 1)
+        self.assertEqual(len(w["days"]), 7)
+        self.assertEqual([d["paid"] for d in w["days"]], [1, 0, 2, 0, 0, 0, 0])
+        self.assertEqual(w["byStaff"][0], {"name": "Sipho", "washes": 2, "takings": 160.0})
+        self.assertEqual({t["name"]: t["washes"] for t in w["byType"]}, {"Normal": 2, "Premium": 1})
+
+        m = self.svc.report("month", "2026-10-05")
+        self.assertEqual((m["first"], m["last"], len(m["days"])), ("2026-10-01", "2026-10-31", 31))
+        self.assertEqual(m["totals"]["paid"], 4)                              # 12, 19, 21, 21 Oct
+        self.assertEqual(self.svc.report("month", "2026-11-15")["totals"]["paid"], 0)   # Nov wash undone
+        self.assertEqual(self.svc.report("month", "2026-11-15")["previous"]["paid"], 4)
+
+    def test_free_wash_counts_but_no_takings(self):
+        self.wash(0, "0822222222", self.normal, self.sipho, new=True)
+        for i in range(8):
+            self.wash(0, "0822222222", self.normal, self.sipho)
+        self.clock.t = self.MON_10AM
+        self.svc.action("0822222222", "free", {"type": self.premium["id"], "staff": self.lerato["id"]})
+        w = self.svc.report("week", "2026-10-19")
+        self.assertEqual((w["totals"]["paid"], w["totals"]["free"], w["totals"]["takings"]), (9, 1, 720.0))
+        self.assertEqual({s["name"]: (s["washes"], s["takings"]) for s in w["byStaff"]},
+                         {"Sipho": (9, 720.0), "Lerato": (1, 0.0)})
+
+    def test_owner_only_and_bad_input(self):
+        tok = self.svc.login("1234", "1.1.1.1")["token"]
+        with self.assertRaises(ApiError) as e:
+            dispatch(self.svc, "GET", "reports/week/2026-10-19", {}, tok, "x")
+        self.assertEqual(e.exception.status, 403)
+        with self.assertRaises(ApiError):
+            self.svc.report("week", "2026-13-45")
+        with self.assertRaises(ApiError):
+            self.svc.report("year", "2026-10-19")
+
+
 class RouterTests(unittest.TestCase):
     def test_routes(self):
         svc, _ = make()

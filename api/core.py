@@ -627,6 +627,57 @@ class Rewards:
                 out["error"] = "Automatic sending failed (%s). Send it yourself with the button." % str(e)[:120]
         return out
 
+    # ---------- reports (owner) ----------
+    def report(self, period, ref_day):
+        """Totals for the week (Mon-Sun) or calendar month containing ref_day, plus the period before."""
+        try:
+            ref = datetime.strptime(ref_day, "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            raise ApiError(400, "Invalid date.")
+        if period == "week":
+            first = ref - timedelta(days=ref.weekday())
+            last = first + timedelta(days=6)
+            prev_first, prev_last = first - timedelta(days=7), first - timedelta(days=1)
+        elif period == "month":
+            first = ref.replace(day=1)
+            nxt = (first + timedelta(days=32)).replace(day=1)
+            last = nxt - timedelta(days=1)
+            prev_last = first - timedelta(days=1)
+            prev_first = prev_last.replace(day=1)
+        else:
+            raise ApiError(404, "Unknown report.")
+        rows = [r for r in self.store.list_visits_range(prev_first.isoformat(), last.isoformat()) if not r.get("void")]
+        cur = [r for r in rows if r["day"] >= first.isoformat()]
+        prev = [r for r in rows if r["day"] < first.isoformat()]
+
+        def totals(rs):
+            paid = [r for r in rs if r["type"] in ("wash", "new")]
+            return {"paid": len(paid), "free": sum(1 for r in rs if r["type"] == "free"),
+                    "new": sum(1 for r in rs if r["type"] == "new"),
+                    "takings": round(sum(float(r.get("price") or 0) for r in paid), 2)}
+
+        days = []
+        d = first
+        while d <= last:
+            k = d.isoformat()
+            t = totals([r for r in cur if r["day"] == k])
+            days.append({"day": k, **t})
+            d += timedelta(days=1)
+
+        def breakdown(field):
+            out = {}
+            for r in cur:
+                if r["type"] in ("wash", "new", "free") and r.get(field):
+                    o = out.setdefault(r[field], {"name": r[field], "washes": 0, "takings": 0.0})
+                    o["washes"] += 1
+                    if r["type"] != "free":
+                        o["takings"] = round(o["takings"] + float(r.get("price") or 0), 2)
+            return sorted(out.values(), key=lambda x: (-x["washes"], x["name"]))
+
+        return {"period": period, "first": first.isoformat(), "last": last.isoformat(),
+                "today": sa_day(self.clock()), "totals": totals(cur), "previous": totals(prev),
+                "days": days, "byStaff": breakdown("staff"), "byType": breakdown("washType")}
+
     # ---------- WhatsApp replies (webhook) ----------
     def verify_webhook(self, params):
         """Meta's one-time check when the webhook address is saved."""

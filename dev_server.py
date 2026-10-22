@@ -35,6 +35,19 @@ svc = Rewards(MemoryStore(), None, {
 import time as _t
 svc.store.add_reply("sample", {"phone": "27820000009", "name": "Sample Customer", "customer": False,
                                "text": "Are you open on Sunday?", "kind": "message", "at": _t.time() - 600})
+# five weeks of sample washes so the Reports tab has something to show (local trial only)
+import random as _r
+from core import sa_day as _sa_day
+_rng = _r.Random(7)
+for _d in range(1, 36):
+    _ts = _t.time() - _d * 86400
+    for _i in range(_rng.randint(2, 9)):
+        _ty, _pr = _rng.choice([("Normal", 80), ("Premium", 100), ("Platinum", 110)])
+        _kind = _rng.choice(["wash"] * 8 + ["new", "free"])
+        svc.store.add_visit(_sa_day(_ts), "%013d-%d" % (int(_ts * 1000), _i), {
+            "type": _kind, "phone": "2782000%04d" % _i, "name": "Sample", "count": 1, "at": _ts + _i,
+            "washType": _ty, "price": 0 if _kind == "free" else _pr, "stamps": 1,
+            "staff": _rng.choice(["Sipho", "Lerato", "Thabo"]), "plate": "", "void": False})
 
 
 class Handler(SimpleHTTPRequestHandler):

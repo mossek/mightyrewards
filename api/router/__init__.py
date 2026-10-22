@@ -65,6 +65,10 @@ def dispatch(svc, method, path, body, token, ip):
         return svc.replies()
     if path == "replies/seen" and method == "POST":
         return svc.mark_replies_seen()
+    m = re.fullmatch(r"reports/(week|month)/(\d{4}-\d{2}-\d{2})", path)
+    if m and method == "GET":
+        svc.require(token, "admin")
+        return svc.report(m.group(1), m.group(2))
     if path == "settings/hours" and method == "POST":
         svc.require(token, "admin")
         return svc.save_hours(body)

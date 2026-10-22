@@ -72,6 +72,13 @@ class TableStore:
             return []
         return [self._clean(e) for e in self.visits.query_entities("PartitionKey eq '%s'" % day)]
 
+    def list_visits_range(self, first_day, last_day):
+        """All visits from first_day to last_day inclusive (days are 'YYYY-MM-DD' partitions)."""
+        if not (DAY_RE.fullmatch(first_day) and DAY_RE.fullmatch(last_day)):
+            return []
+        q = "PartitionKey ge '%s' and PartitionKey le '%s'" % (first_day, last_day)
+        return [{**self._clean(e), "day": e["PartitionKey"]} for e in self.visits.query_entities(q)]
+
     def get_plate(self, plate):
         from azure.core.exceptions import ResourceNotFoundError
         try:
@@ -154,6 +161,9 @@ class MemoryStore:
 
     def list_visits(self, day):
         return [dict(r) for r in self.v.get(day, {}).values()]
+
+    def list_visits_range(self, first_day, last_day):
+        return [{**r, "day": d} for d, rows in self.v.items() if first_day <= d <= last_day for r in rows.values()]
 
     def get_plate(self, plate):
         return self.p.get(plate)
