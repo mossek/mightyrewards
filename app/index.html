@@ -129,6 +129,10 @@ tbody tr:hover{background:var(--raised)}
 .tag{display:inline-block;font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
 .tag.stop{border-color:var(--bad);color:var(--bad)}
 .tag.start{border-color:var(--good);color:var(--good)}
+.hours-row{display:grid;grid-template-columns:110px 90px minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:center}
+.hours-row input[type=time]{width:100%;font:inherit;padding:9px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+.hours-row input[type=time]:disabled{opacity:.35}
+@media (max-width:480px){.hours-row{grid-template-columns:90px 70px minmax(0,1fr) minmax(0,1fr);font-size:14px}}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;font-size:14px;max-width:calc(100% - 32px);z-index:5}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:no-preference){.stamp{transition:background .2s,border-color .2s}}
@@ -282,6 +286,14 @@ tbody tr:hover{background:var(--raised)}
       <button type="button" id="saveCatalog" style="justify-self:start">Save wash types and staff</button>
       <div id="catalogMsg" class="err" role="status"></div>
     </div>
+    <div class="panel" style="grid-column:1/-1">
+      <h2>Business hours</h2>
+      <label class="check"><input type="checkbox" id="hoursOn"> Staff can only use the app during business hours</label>
+      <p class="small">Outside these hours the staff PIN doesn't work and staff are signed out at closing time. Your owner PIN always works.</p>
+      <div id="hoursRows" style="display:grid;gap:8px"></div>
+      <button type="button" id="saveHours" style="justify-self:start">Save business hours</button>
+      <div id="hoursMsg" class="err" role="status"></div>
+    </div>
     <div class="panel">
       <h2>Change staff PIN</h2>
       <div><label for="newPin">New 4-digit staff PIN</label><input id="newPin" type="password" inputmode="numeric" maxlength="4" class="pin-input" autocomplete="new-password"></div>
@@ -365,7 +377,7 @@ tbody tr:hover{background:var(--raised)}
     $("whoAmI").textContent=cfg.role==="admin"?"Owner":"Staff";
     $("tSettings").hidden=cfg.role!=="admin";
     $("waStatus").textContent=cfg.autoWhatsApp?"✅ Automatic sending is on. Card messages go out by themselves.":"Automatic sending is off. Staff send messages with the Open in WhatsApp button.";
-    renderBanner(); loadEditors(); clearMessage(); render(); refreshToday(); refreshReplies(false);
+    renderBanner(); loadEditors(); loadHours(); clearMessage(); render(); refreshToday(); refreshReplies(false);
   }
   function renderBanner(){
     const b=$("setupBanner");
@@ -382,7 +394,7 @@ tbody tr:hover{background:var(--raised)}
   Object.keys(tabs).forEach(t=>$(t).onclick=()=>{
     Object.entries(tabs).forEach(([b,p])=>{ $(b).setAttribute("aria-selected",b===t); $(p).hidden=b!==t; });
     if(t==="tCustomers") refreshCustomers();
-    if(t==="tSettings") loadEditors();
+    if(t==="tSettings"){ loadEditors(); loadHours(); }
     if(t==="tReplies") refreshReplies(true);
   });
 
@@ -715,6 +727,37 @@ tbody tr:hover{background:var(--raised)}
       cfg.catalog=await api("POST","settings/catalog",{types:editTypes,staff:editStaff});
       loadEditors(); renderBanner(); resetSel(); render();
       m.className="ok"; m.textContent="Saved. Staff see the new list next time they look up a customer.";
+    }catch(err){ m.textContent=err.message; }
+  };
+
+  // ---------- settings: business hours ----------
+  const DAYS=[["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],["thu","Thursday"],["fri","Friday"],["sat","Saturday"],["sun","Sunday"]];
+  let editHours=null;
+  function loadHours(){
+    if(!cfg||!cfg.hours) return;
+    editHours=JSON.parse(JSON.stringify(cfg.hours));
+    $("hoursOn").checked=!!editHours.enabled;
+    const box=$("hoursRows"); box.innerHTML="";
+    DAYS.forEach(([d,label])=>{
+      const day=editHours.days[d];
+      const row=el("div","hours-row");
+      row.appendChild(el("b",null,label));
+      const open=el("label","check"); const cb=el("input"); cb.type="checkbox"; cb.checked=!day.closed;
+      cb.setAttribute("aria-label",label+" open"); open.appendChild(cb); open.appendChild(document.createTextNode(" Open"));
+      row.appendChild(open);
+      const t1=el("input"); t1.type="time"; t1.value=day.open; t1.setAttribute("aria-label",label+" opening time");
+      const t2=el("input"); t2.type="time"; t2.value=day.close; t2.setAttribute("aria-label",label+" closing time");
+      const sync=()=>{ day.closed=!cb.checked; t1.disabled=t2.disabled=day.closed; };
+      cb.onchange=sync; t1.oninput=()=>day.open=t1.value; t2.oninput=()=>day.close=t2.value; sync();
+      row.appendChild(t1); row.appendChild(t2); box.appendChild(row);
+    });
+  }
+  $("saveHours").onclick=async ()=>{
+    const m=$("hoursMsg"); m.className="err"; m.textContent="";
+    try{
+      editHours.enabled=$("hoursOn").checked;
+      cfg.hours=await api("POST","settings/hours",editHours); loadHours();
+      m.className="ok"; m.textContent=cfg.hours.enabled?"Saved. Staff can only use the app during these hours.":"Saved. Business hours are switched off, so staff can use the app any time.";
     }catch(err){ m.textContent=err.message; }
   };
 

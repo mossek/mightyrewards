@@ -337,6 +337,73 @@ class ReplyTests(unittest.TestCase):
         self.assertEqual((r["name"], r["customer"]), ("WA Name", False))
 
 
+class HoursTests(unittest.TestCase):
+    MON_10AM = 1792396800.0          # Monday 19 Oct 2026, 10:00 South African time
+
+    def setUp(self):
+        self.svc, self.clock = make()
+        self.clock.t = self.MON_10AM
+        days = {d: {"open": "07:00", "close": "18:00"} for d in ("mon", "tue", "wed", "thu", "fri")}
+        days["sat"] = {"open": "08:00", "close": "14:00"}
+        days["sun"] = {"closed": True}
+        self.hours = {"enabled": True, "days": days}
+
+    def at(self, hours_after_monday_10am):
+        self.clock.t = self.MON_10AM + hours_after_monday_10am * 3600
+
+    def test_off_by_default(self):
+        self.at(14)                                   # Monday midnight
+        self.assertTrue(self.svc.is_open())
+        self.assertEqual(self.svc.login("1234", "1.1.1.1")["role"], "staff")
+
+    def test_staff_blocked_after_hours_owner_never(self):
+        self.svc.save_hours(self.hours)
+        tok = self.svc.login("1234", "1.1.1.1")["token"]     # 10:00, open
+        self.at(8.5)                                          # 18:30, closed
+        with self.assertRaises(ApiError) as e:
+            self.svc.require(tok)                             # signed out at closing time
+        self.assertEqual(e.exception.status, 401)
+        self.assertIn("opens tomorrow at 07:00", e.exception.message)
+        with self.assertRaises(ApiError) as e:
+            self.svc.login("1234", "1.1.1.1")
+        self.assertEqual(e.exception.status, 403)
+        self.assertEqual(self.svc.login("908172", "1.1.1.1")["role"], "admin")   # owner always
+        self.at(-4)                                           # Monday 06:00
+        with self.assertRaises(ApiError) as e:
+            self.svc.login("1234", "1.1.1.1")
+        self.assertIn("opens today at 07:00", e.exception.message)
+        self.at(-3)                                           # 07:00 exactly: open
+        self.svc.login("1234", "1.1.1.1")
+
+    def test_weekend_and_closed_day(self):
+        self.svc.save_hours(self.hours)
+        self.at(5 * 24 + 3)                                   # Saturday 13:00: open
+        self.assertTrue(self.svc.is_open())
+        self.at(5 * 24 + 4)                                   # Saturday 14:00: closed
+        self.assertFalse(self.svc.is_open())
+        self.assertEqual(self.svc.next_opening(), "on Monday at 07:00")   # Sunday closed
+        self.at(6 * 24)                                       # Sunday 10:00
+        self.assertFalse(self.svc.is_open())
+        self.assertEqual(self.svc.next_opening(), "tomorrow at 07:00")
+
+    def test_wrong_pin_still_counts_when_closed(self):
+        self.svc.save_hours(self.hours)
+        self.at(12)
+        with self.assertRaises(ApiError) as e:
+            self.svc.login("0000", "9.9.9.9")
+        self.assertEqual(e.exception.status, 401)             # wrong PIN, not "closed"
+
+    def test_validation(self):
+        bad = {"enabled": True, "days": {**self.hours["days"], "mon": {"open": "18:00", "close": "07:00"}}}
+        with self.assertRaises(ApiError):
+            self.svc.save_hours(bad)
+        with self.assertRaises(ApiError):
+            self.svc.save_hours({"enabled": True, "days": {**self.hours["days"], "tue": {"open": "7am", "close": "18:00"}}})
+        with self.assertRaises(ApiError):
+            self.svc.save_hours({"enabled": True, "days": {d: {"closed": True} for d in
+                                                           ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}})
+
+
 class RouterTests(unittest.TestCase):
     def test_routes(self):
         svc, _ = make()

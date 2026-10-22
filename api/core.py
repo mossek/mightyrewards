@@ -71,6 +71,12 @@ def norm_phone(value):
     return d if re.fullmatch(r"27[6-8]\d{8}", d) else None
 
 
+DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]          # Python weekday() order
+DAY_NAMES = {"mon": "Monday", "tue": "Tuesday", "wed": "Wednesday", "thu": "Thursday",
+             "fri": "Friday", "sat": "Saturday", "sun": "Sunday"}
+TIME_RE = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+
+
 def norm_plate(value):
     """'ca 123-456' -> 'CA123456'. Letters and digits only, at least one letter."""
     p = re.sub(r"[^A-Za-z0-9]", "", str(value or "")).upper()
@@ -179,6 +185,8 @@ class Rewards:
             raise ApiError(401, "Wrong PIN. Try again.")
         if th["fails"]:
             self.store.set_setting(key, {"fails": 0, "until": 0})
+        if role == "staff":
+            self._check_open()
         token = self._sign({"r": role, "v": ver, "e": int(now + hours * 3600)})
         return {"token": token, "role": role, "expires": int(now + hours * 3600)}
 
@@ -197,6 +205,7 @@ class Rewards:
             rec = self._staff_pin_record()
             if not rec or rec["v"] != p["v"]:
                 raise ApiError(401, "The PIN was changed. Enter the new PIN.")
+            self._check_open(401)       # staff are signed out at closing time
         if role == "admin" and p["r"] != "admin":
             raise ApiError(403, "Only the owner can do this.")
         return p["r"]
@@ -219,7 +228,63 @@ class Rewards:
             "autoWhatsApp": self.sender is not None,
             "reviewUrl": self.cfg["review_url"],
             "catalog": self.catalog(),
+            "hours": self.hours(),
         }
+
+    # ---------- business hours (staff can only use the app while open) ----------
+    def hours(self):
+        h = self.store.get_setting("hours")
+        if not h:
+            h = {"enabled": False,
+                 "days": {d: {"open": "07:00", "close": "18:00", "closed": False} for d in DAYS}}
+        return h
+
+    def save_hours(self, body):
+        days = body.get("days")
+        if not isinstance(days, dict):
+            raise ApiError(400, "Invalid business hours.")
+        out = {}
+        for d in DAYS:
+            day = days.get(d) or {}
+            closed = bool(day.get("closed"))
+            o, c = str(day.get("open") or ""), str(day.get("close") or "")
+            if not closed:
+                if not (TIME_RE.fullmatch(o) and TIME_RE.fullmatch(c)):
+                    raise ApiError(400, "Use times like 07:00 for %s." % DAY_NAMES[d])
+                if c <= o:
+                    raise ApiError(400, "On %s the closing time must be after the opening time." % DAY_NAMES[d])
+            out[d] = {"open": o or "07:00", "close": c or "18:00", "closed": closed}
+        if body.get("enabled") and all(v["closed"] for v in out.values()):
+            raise ApiError(400, "Open at least one day, or switch business hours off.")
+        h = {"enabled": bool(body.get("enabled")), "days": out}
+        self.store.set_setting("hours", h)
+        return h
+
+    def is_open(self, ts=None):
+        h = self.hours()
+        if not h["enabled"]:
+            return True
+        t = datetime.fromtimestamp(self.clock() if ts is None else ts, SA_TZ)
+        day = h["days"][DAYS[t.weekday()]]
+        hm = t.strftime("%H:%M")
+        return not day["closed"] and day["open"] <= hm < day["close"]
+
+    def next_opening(self):
+        h = self.hours()
+        now = datetime.fromtimestamp(self.clock(), SA_TZ)
+        for i in range(8):
+            d = now + timedelta(days=i)
+            day = h["days"][DAYS[d.weekday()]]
+            if day["closed"] or (i == 0 and now.strftime("%H:%M") >= day["open"]):
+                continue
+            when = "today" if i == 0 else "tomorrow" if i == 1 else "on " + DAY_NAMES[DAYS[d.weekday()]]
+            return "%s at %s" % (when, day["open"])
+        return None
+
+    def _check_open(self, status=403):
+        if not self.is_open():
+            nxt = self.next_opening()
+            raise ApiError(status, "Mighty Rewards is closed now." + (" It opens %s." % nxt if nxt else ""))
 
     # ---------- wash types & staff (owner settings) ----------
     def catalog(self):

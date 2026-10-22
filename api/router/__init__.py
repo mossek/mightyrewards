@@ -65,6 +65,9 @@ def dispatch(svc, method, path, body, token, ip):
         return svc.replies()
     if path == "replies/seen" and method == "POST":
         return svc.mark_replies_seen()
+    if path == "settings/hours" and method == "POST":
+        svc.require(token, "admin")
+        return svc.save_hours(body)
     if path == "settings/catalog" and method == "POST":
         svc.require(token, "admin")
         return svc.save_catalog(body)
