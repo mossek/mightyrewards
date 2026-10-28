@@ -1,14 +1,26 @@
 name: Test and deploy
 
-# Every push to main runs the tests, then uploads the app and server to Azure.
-# You can also run it by hand: GitHub → Actions → "Test and deploy" → Run workflow.
+# - Push to main          -> run the tests, then publish to the LIVE app.
+# - Open a pull request   -> run the tests, then publish a separate TEST COPY of the app
+#                            (its address is posted as a comment on the pull request).
+#                            Test copies use their own test data and never message customers.
+# - Close/merge the PR    -> the test copy is deleted.
+# You can also run it by hand: GitHub -> Actions -> "Test and deploy" -> Run workflow.
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write      # lets the deploy step comment the test copy's address on the PR
 
 jobs:
   test:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,15 +32,28 @@ jobs:
 
   deploy:
     needs: test
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy to Azure Static Web Apps
+      - name: Deploy to Azure Static Web Apps (live, or a test copy for pull requests)
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: app
           api_location: api
           output_location: ""
           skip_app_build: true
+
+  close_test_copy:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the pull request's test copy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: close
+          app_location: app

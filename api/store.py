@@ -9,14 +9,16 @@ DAY_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 class TableStore:
-    def __init__(self, conn_str):
+    def __init__(self, conn_str, prefix=""):
+        """prefix "" = live data; "test" = the separate tables used by test copies of the app."""
         from azure.data.tables import TableServiceClient
         svc = TableServiceClient.from_connection_string(conn_str)
-        self.customers = svc.create_table_if_not_exists("customers")
-        self.visits = svc.create_table_if_not_exists("visits")
-        self.settings = svc.create_table_if_not_exists("settings")
-        self.plates = svc.create_table_if_not_exists("plates")     # registration -> cell number
-        self.replies = svc.create_table_if_not_exists("replies")   # customers' WhatsApp replies
+        table = lambda name: svc.create_table_if_not_exists(prefix + name)
+        self.customers = table("customers")
+        self.visits = table("visits")
+        self.settings = table("settings")
+        self.plates = table("plates")       # registration -> cell number
+        self.replies = table("replies")     # customers' WhatsApp replies
 
     @staticmethod
     def _clean(entity):

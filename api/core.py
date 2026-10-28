@@ -11,6 +11,7 @@ import re
 import secrets
 import time
 import urllib.parse
+from html import escape as html_escape
 from datetime import datetime, timedelta, timezone
 
 GOAL = 10            # the 10th wash is free
@@ -120,9 +121,10 @@ def hash_pin(pin, salt):
 
 
 class Rewards:
-    def __init__(self, store, sender, cfg, clock=time.time):
+    def __init__(self, store, sender, cfg, clock=time.time, mailer=None):
         self.store = store
         self.sender = sender            # None when WhatsApp sending is off
+        self.mailer = mailer            # None when report emails are off
         self.cfg = cfg
         self.clock = clock
         if not cfg.get("token_secret") or len(cfg["token_secret"]) < 32:
@@ -131,8 +133,11 @@ class Rewards:
             raise RuntimeError("ADMIN_PIN must be set (6+ digits)")
 
     @classmethod
-    def from_env(cls, store, sender):
+    def from_env(cls, store, sender, mailer=None, env="live"):
         cfg = {
+            "env": env,
+            "report_key": os.environ.get("REPORT_KEY", ""),
+            "report_emails": [a.strip() for a in os.environ.get("REPORT_EMAILS", "").split(",") if a.strip()],
             "token_secret": os.environ.get("TOKEN_SECRET", ""),
             "admin_pin": os.environ.get("ADMIN_PIN", ""),
             "staff_pin": os.environ.get("STAFF_PIN", ""),
@@ -144,7 +149,7 @@ class Rewards:
             "wa_verify_token": os.environ.get("WA_VERIFY_TOKEN", ""),
             "wa_app_secret": os.environ.get("WA_APP_SECRET", ""),
         }
-        return cls(store, sender, cfg)
+        return cls(store, sender, cfg, mailer=mailer)
 
     # ---------- sessions ----------
     def _staff_pin_record(self):
@@ -229,6 +234,9 @@ class Rewards:
             "reviewUrl": self.cfg["review_url"],
             "catalog": self.catalog(),
             "hours": self.hours(),
+            "env": self.cfg.get("env", "live"),
+            "reportEmails": self.cfg.get("report_emails", []) if role == "admin" else [],
+            "emailReports": self.mailer is not None,
         }
 
     # ---------- business hours (staff can only use the app while open) ----------
@@ -677,6 +685,119 @@ class Rewards:
         return {"period": period, "first": first.isoformat(), "last": last.isoformat(),
                 "today": sa_day(self.clock()), "totals": totals(cur), "previous": totals(prev),
                 "days": days, "byStaff": breakdown("staff"), "byType": breakdown("washType")}
+
+    # ---------- emailed reports (owner) ----------
+    def _last_full_period(self, period):
+        today = datetime.fromtimestamp(self.clock(), SA_TZ).date()
+        if period == "week":
+            return (today - timedelta(days=today.weekday() + 1)).isoformat()   # Sunday of last week
+        return (today.replace(day=1) - timedelta(days=1)).isoformat()          # last day of last month
+
+    def send_scheduled_report(self, period, key):
+        """Called by the Azure scheduler (Monday / 1st of the month), which sends REPORT_KEY instead of a PIN."""
+        expected = self.cfg.get("report_key") or ""
+        if not expected or not hmac.compare_digest(str(key or ""), expected):
+            raise ApiError(401, "Not allowed.")
+        return self.send_report(period)
+
+    def send_report(self, period):
+        if period not in ("week", "month"):
+            raise ApiError(404, "Unknown report.")
+        if self.mailer is None:
+            raise ApiError(409, "Report emails aren't set up on this copy of the app.")
+        to = self.cfg.get("report_emails") or []
+        if not to:
+            raise ApiError(409, "No email address is set for reports (REPORT_EMAILS).")
+        r = self.report(period, self._last_full_period(period))
+        subject, text, html = self.report_email(r)
+        try:
+            self.mailer.send(to, subject, text, html)
+        except Exception as e:
+            raise ApiError(502, "The report email couldn't be sent (%s)." % str(e)[:150])
+        return {"sent": True, "to": to, "subject": subject}
+
+    def report_email(self, r):
+        """Subject, plain text and HTML for one week/month report."""
+        b = self.cfg["business"]
+        first = datetime.strptime(r["first"], "%Y-%m-%d")
+        last = datetime.strptime(r["last"], "%Y-%m-%d")
+        if r["period"] == "week":
+            label = "%d %s - %d %s %d" % (first.day, first.strftime("%b"), last.day, last.strftime("%b"), last.year)
+            kind, prev_word = "Weekly", "last week"
+        else:
+            label = first.strftime("%B %Y")
+            kind, prev_word = "Monthly", "the month before"
+        t, p = r["totals"], r["previous"]
+
+        def money(v):
+            return "R" + "{:,.2f}".format(v).replace(",", " ").replace(".00", "")
+
+        def change(cur, prev):
+            if not prev:
+                return "new" if cur else "same"
+            pct = round((cur - prev) / prev * 100)
+            return "same" if pct == 0 else ("up %d%%" % pct if pct > 0 else "down %d%%" % -pct)
+
+        busiest = max(r["days"], key=lambda d: d["paid"]) if r["days"] else None
+        busiest_txt = ("%s (%d paid washes)" % (datetime.strptime(busiest["day"], "%Y-%m-%d").strftime("%A %d %B").replace(" 0", " "),
+                                                 busiest["paid"])) if busiest and busiest["paid"] else "No washes recorded"
+        rows = [("Takings", money(t["takings"]), change(t["takings"], p["takings"])),
+                ("Paid washes", str(t["paid"]), change(t["paid"], p["paid"])),
+                ("Free Washes", str(t["free"]), change(t["free"], p["free"])),
+                ("New customers", str(t["new"]), change(t["new"], p["new"]))]
+        subject = "%s %s report: %s - %s, %d washes" % (b, kind.lower(), label, money(t["takings"]), t["paid"])
+        link = (self.cfg.get("public_url") or "") + "/"
+
+        lines = ["%s %s report" % (b, kind.lower()), label, ""]
+        lines += ["%s: %s (%s vs %s)" % (n, v, c, prev_word) for n, v, c in rows]
+        lines += ["", "Busiest day: " + busiest_txt, "", "By staff:"]
+        lines += ["  %s: %d washes, %s" % (s["name"], s["washes"], money(s["takings"])) for s in r["byStaff"]] or ["  (none)"]
+        lines += ["", "By wash type:"]
+        lines += ["  %s: %d washes, %s" % (x["name"], x["washes"], money(x["takings"])) for x in r["byType"]] or ["  (none)"]
+        lines += ["", "Free Washes count as washes for staff but add R0 to takings. Undone washes are left out.",
+                  "Full report: open %s with the owner PIN, then Reports." % link]
+        text = "\n".join(lines)
+
+        e = html_escape
+        ink, muted, line, blue = "#0f2a33", "#5a7179", "#d3e0e3", "#0b7a8a"
+        cell = "padding:8px 10px;border-bottom:1px solid %s;" % line
+
+        def table(title, items):
+            if not items:
+                body = '<tr><td style="%scolor:%s" colspan="3">Nothing recorded</td></tr>' % (cell, muted)
+            else:
+                body = "".join('<tr><td style="%s">%s</td><td style="%stext-align:right">%d</td>'
+                               '<td style="%stext-align:right">%s</td></tr>' % (cell, e(x["name"]), cell, x["washes"], cell, money(x["takings"]))
+                               for x in items)
+            return ('<h3 style="margin:24px 0 6px;font-size:16px;color:%s">%s</h3>'
+                    '<table role="presentation" style="border-collapse:collapse;width:100%%;font-size:14px">'
+                    '<tr><th style="%stext-align:left;color:%s;font-weight:600">Name</th>'
+                    '<th style="%stext-align:right;color:%s;font-weight:600">Washes</th>'
+                    '<th style="%stext-align:right;color:%s;font-weight:600">Takings</th></tr>%s</table>'
+                    % (ink, e(title), cell, muted, cell, muted, cell, muted, body))
+
+        tiles = "".join(
+            '<td style="padding:6px;width:25%%;vertical-align:top"><div style="border:1px solid %s;border-radius:10px;padding:12px">'
+            '<div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:%s">%s</div>'
+            '<div style="font-size:24px;font-weight:800;color:%s">%s</div>'
+            '<div style="font-size:12px;color:%s">%s vs %s</div></div></td>' % (line, muted, e(n), ink, e(v), muted, e(c), e(prev_word))
+            for n, v, c in rows)
+        html = (
+            '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:640px;margin:0 auto;color:%s">'
+            '<div style="background:#05090f;color:#e8f1f6;padding:18px 20px;border-radius:12px 12px 0 0">'
+            '<div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#62dcf4">%s report</div>'
+            '<div style="font-size:22px;font-weight:800">%s</div><div style="font-size:15px">%s</div></div>'
+            '<div style="padding:12px 14px;border:1px solid %s;border-top:0;border-radius:0 0 12px 12px">'
+            '<table role="presentation" style="width:100%%;border-collapse:collapse"><tr>%s</tr></table>'
+            '<p style="font-size:14px;margin:16px 6px 0"><b>Busiest day:</b> %s</p>'
+            '%s%s'
+            '<p style="font-size:12px;color:%s;margin:18px 0 6px">Free Washes count as washes for staff but add R0 to takings. Undone washes are left out.</p>'
+            '<p style="margin:16px 0 4px"><a href="%s" style="background:%s;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;display:inline-block">Open the full report</a></p>'
+            '<p style="font-size:12px;color:%s">Log in with the owner PIN, then open Reports.</p>'
+            '</div></div>'
+            % (ink, e(kind), e(b), e(label), line, tiles, e(busiest_txt),
+               table("By staff", r["byStaff"]), table("By wash type", r["byType"]), muted, e(link), blue, muted))
+        return subject, text, html
 
     # ---------- WhatsApp replies (webhook) ----------
     def verify_webhook(self, params):
