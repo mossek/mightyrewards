@@ -466,6 +466,154 @@ class ReportTests(unittest.TestCase):
             self.svc.report("year", "2026-10-19")
 
 
+class FakeMailer:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, to, subject, text, html):
+        self.sent.append((to, subject, text, html))
+
+
+class EmailReportTests(unittest.TestCase):
+    MON_10AM = 1792396800.0          # Monday 19 Oct 2026, 10:00 South African time
+
+    def setUp(self):
+        self.mailer = FakeMailer()
+        cfg = dict(CFG, report_key="k" * 30, report_emails=["owner@example.test"])
+        self.clock = Clock()
+        self.svc = Rewards(MemoryStore(), None, cfg, self.clock, mailer=self.mailer)
+        cat = self.svc.save_catalog({"types": [{"name": "Normal", "price": 80}], "staff": [{"name": "Sipho"}]})
+        self.v = {"type": cat["types"][0]["id"], "staff": cat["staff"][0]["id"]}
+
+    def test_weekly_email_covers_last_full_week(self):
+        self.clock.t = self.MON_10AM - 3 * 86400              # Friday 16 Oct: in last week
+        self.svc.create_customer({"phone": "0821234567", "name": "A", "consent": True, **self.v})
+        self.svc.action("0821234567", "wash", self.v)
+        self.clock.t = self.MON_10AM                           # Monday 19 Oct (send day)
+        with self.assertRaises(ApiError) as e:
+            self.svc.send_scheduled_report("week", "wrong")
+        self.assertEqual(e.exception.status, 401)
+        r = self.svc.send_scheduled_report("week", "k" * 30)
+        to, subject, text, html = self.mailer.sent[0]
+        self.assertEqual(to, ["owner@example.test"])
+        self.assertIn("12 Oct - 18 Oct 2026", subject)
+        self.assertIn("R160, 2 washes", subject)
+        self.assertIn("Busiest day: Friday 16 October (2 paid washes)", text)
+        self.assertIn("Sipho: 2 washes, R160", text)
+        self.assertIn("https://example.test/", html)
+        self.assertEqual(r["sent"], True)
+
+    def test_monthly_email_and_owner_test_button(self):
+        self.clock.t = self.MON_10AM                           # 19 Oct -> last month is September
+        r = self.svc.send_report("month")
+        self.assertIn("September 2026", r["subject"])
+        self.assertIn("Nothing recorded", self.mailer.sent[0][3])
+        tok = self.svc.login("908172", "1.1.1.1")["token"]
+        dispatch(self.svc, "POST", "settings/report-test", {"period": "week"}, tok, "x")
+        self.assertEqual(len(self.mailer.sent), 2)
+        staff = self.svc.login("1234", "1.1.1.1")["token"]
+        with self.assertRaises(ApiError):
+            dispatch(self.svc, "POST", "settings/report-test", {"period": "week"}, staff, "x")
+
+    def test_no_key_or_mailer_means_no_email(self):
+        svc, _ = make()                                        # no REPORT_KEY, no mailer
+        with self.assertRaises(ApiError):
+            svc.send_scheduled_report("week", "")
+        with self.assertRaises(ApiError) as e:
+            svc.send_report("week")
+        self.assertEqual(e.exception.status, 409)
+
+    def test_test_copy_emails_are_marked_and_never_scheduled(self):
+        mailer = FakeMailer()
+        test = Rewards(MemoryStore(), None, dict(CFG, env="test", report_key="k" * 30,
+                                                 report_emails=["owner@example.test"]), Clock(), mailer=mailer)
+        r = test.send_report("week")                              # the Settings button works on a test copy
+        self.assertTrue(r["subject"].startswith("[TEST COPY] "))
+        self.assertIn("TEST COPY", mailer.sent[0][2])
+        self.assertIn("TEST COPY", mailer.sent[0][3])
+        with self.assertRaises(ApiError) as e:
+            test.send_scheduled_report("week", "k" * 30)          # automatic emails: live app only
+        self.assertEqual(e.exception.status, 409)
+        self.assertEqual(len(mailer.sent), 1)
+        live = self.svc.send_report("week")
+        self.assertFalse(live["subject"].startswith("[TEST COPY]"))
+
+    def test_names_are_escaped_in_html(self):
+        self.svc.save_catalog({"types": [{"name": "<b>Wax</b>", "price": 10}], "staff": [{"name": "Sipho"}]})
+        cat = self.svc.catalog()
+        self.clock.t = self.MON_10AM - 86400
+        self.svc.create_customer({"phone": "0821234567", "name": "A", "consent": True,
+                                  "type": cat["types"][0]["id"], "staff": cat["staff"][0]["id"]})
+        self.clock.t = self.MON_10AM
+        self.svc.send_report("week")
+        self.assertNotIn("<b>Wax</b>", self.mailer.sent[0][3])
+        self.assertIn("&lt;b&gt;Wax&lt;/b&gt;", self.mailer.sent[0][3])
+
+
+class MailerTests(unittest.TestCase):
+    def test_signing(self):
+        import base64
+        import hashlib
+        import hmac
+        from mailer import AcsMailer, API
+        key = base64.b64encode(b"secret-key").decode()
+        m = AcsMailer("endpoint=https://mighty.africa.communication.azure.com/;accesskey=" + key, "DoNotReply@x.azurecomm.net")
+        h = m.headers(b'{"a":1}', date="Wed, 28 Oct 2026 05:00:00 GMT")
+        content = base64.b64encode(hashlib.sha256(b'{"a":1}').digest()).decode()
+        to_sign = "POST\n%s\nWed, 28 Oct 2026 05:00:00 GMT;mighty.africa.communication.azure.com;%s" % (API, content)
+        sig = base64.b64encode(hmac.new(b"secret-key", to_sign.encode(), hashlib.sha256).digest()).decode()
+        self.assertEqual(h["x-ms-content-sha256"], content)
+        self.assertEqual(h["Authorization"], "HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature=" + sig)
+
+
+class CopyLiveDataTests(unittest.TestCase):
+    def setUp(self):
+        self.live, _ = make()
+        cat = self.live.save_catalog({"types": [{"name": "Premium", "price": 100}], "staff": [{"name": "Sipho"}]})
+        self.live.create_customer({"phone": "0821234567", "name": "A", "consent": True, "plate": "CA123",
+                                   "type": cat["types"][0]["id"], "staff": cat["staff"][0]["id"]})
+        self.live.change_staff_pin("4321")
+        test_store = MemoryStore()
+        test_store.prefix = "test"
+        self.test = Rewards(test_store, None, dict(CFG, env="test"), Clock())
+        self.test.live_source = lambda: self.live.store
+
+    def test_copy_brings_settings_customers_and_washes_but_not_pins(self):
+        self.assertEqual(self.test.catalog()["types"], [])
+        r = self.test.copy_live_data()
+        self.assertEqual((r["customers"], r["visits"]), (1, 1))
+        self.assertEqual(self.test.catalog()["types"][0]["name"], "Premium")
+        self.assertEqual(self.test.get_customer("CA123")["customer"]["name"], "A")
+        self.assertEqual(self.test.login("1234", "1.1.1.1")["role"], "staff")    # test copy keeps its own PIN
+
+    def test_changes_in_test_copy_never_reach_live(self):
+        self.test.copy_live_data()
+        self.test.action("0821234567", "undo")
+        self.test.delete_customer("0821234567")
+        self.assertEqual(self.live.get_customer("0821234567")["customer"]["count"], 1)
+
+    def test_never_runs_on_live(self):
+        self.live.live_source = lambda: self.test.store
+        with self.assertRaises(ApiError):
+            self.live.copy_live_data()                       # live app: refused (not a test copy)
+        live_store = self.live.store
+        with self.assertRaises(RuntimeError):
+            live_store.replace_from(self.test.store)         # store itself refuses to overwrite live data
+        self.assertIsNotNone(self.live.get_customer("0821234567")["customer"])
+
+
+class TestCopyDetectionTests(unittest.TestCase):
+    def test_only_pull_request_copies_count_as_test(self):
+        from router import is_test_copy
+        live = "https://happy-flower-011ac9603.1.azurestaticapps.net"
+        self.assertTrue(is_test_copy("happy-flower-011ac9603-12.westeurope.1.azurestaticapps.net", live))
+        self.assertFalse(is_test_copy("happy-flower-011ac9603.1.azurestaticapps.net", live))      # live
+        self.assertFalse(is_test_copy("rewards.mightycarwash.co.za", live))                     # custom domain
+        self.assertFalse(is_test_copy("", live))                                                # no header
+        self.assertFalse(is_test_copy("evil-flower-011ac9603-12.westeurope.1.azurestaticapps.net", live))
+        self.assertFalse(is_test_copy("happy-flower-011ac9603-12.westeurope.1.azurestaticapps.net", ""))
+
+
 class RouterTests(unittest.TestCase):
     def test_routes(self):
         svc, _ = make()

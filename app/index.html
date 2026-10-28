@@ -157,6 +157,7 @@ tbody tr:hover{background:var(--raised)}
 .rep-table td.num,.rep-table th.num{text-align:right;font-variant-numeric:tabular-nums}
 .rep-table{min-width:0}
 details summary{cursor:pointer;color:var(--muted);font-size:14px}
+.test-banner{background:#f5c344;color:#2a1f00;font-weight:800;text-align:center;padding:8px 16px;font-size:14px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;font-size:14px;max-width:calc(100% - 32px);z-index:5}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:no-preference){.stamp{transition:background .2s,border-color .2s}}
@@ -175,6 +176,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
 </section>
 
 <!-- APP -->
+<div class="test-banner" id="testBanner" hidden>TEST COPY: changes here use test data and don't affect the live app. Report emails sent from here are marked [TEST COPY].</div>
 <div id="sApp" class="wrap" hidden>
   <div class="top">
     <div class="brand"><img src="logo.jpg" alt="Mighty Car-Wash"><div><div style="font-weight:900;font-size:18px">Rewards</div><div class="who" id="whoAmI">Staff</div></div></div>
@@ -352,6 +354,21 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
       <button type="button" id="saveHours" style="justify-self:start">Save business hours</button>
       <div id="hoursMsg" class="err" role="status"></div>
     </div>
+    <div class="panel" id="copyLivePanel" hidden style="grid-column:1/-1;border-color:#f5c344">
+      <h2>Test data</h2>
+      <p class="small">Copy the live app's wash types, prices, staff, business hours, customers and wash history into this test copy, so you can test with real figures. This replaces the test copy's data. The live app is never changed, and this test copy never sends WhatsApp messages or emails.</p>
+      <button type="button" id="copyLiveBtn" style="justify-self:start">Copy live data into this test copy</button>
+      <div id="copyLiveMsg" class="err" role="status"></div>
+    </div>
+    <div class="panel">
+      <h2>Email reports</h2>
+      <p id="repEmailInfo" class="small"></p>
+      <div class="row">
+        <button type="button" class="ghost" id="testWeekly">Send last week's report now</button>
+        <button type="button" class="ghost" id="testMonthly">Send last month's report now</button>
+      </div>
+      <div id="repEmailMsg" class="err" role="status"></div>
+    </div>
     <div class="panel">
       <h2>Change staff PIN</h2>
       <div><label for="newPin">New 4-digit staff PIN</label><input id="newPin" type="password" inputmode="numeric" maxlength="4" class="pin-input" autocomplete="new-password"></div>
@@ -435,6 +452,13 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
     $("whoAmI").textContent=cfg.role==="admin"?"Owner":"Staff";
     $("tSettings").hidden=cfg.role!=="admin";
     $("tReports").hidden=cfg.role!=="admin";
+    $("testBanner").hidden=cfg.env!=="test";
+    $("copyLivePanel").hidden=!(cfg.env==="test"&&cfg.role==="admin");
+    const to=cfg.reportEmails.join(", ")||"(no address set)";
+    $("repEmailInfo").textContent=!cfg.emailReports ? "Report emails aren't switched on for this copy of the app."
+      : cfg.env==="test" ? "Test copy: the buttons below email a report made from this test copy's data to "+to+", marked [TEST COPY]. The automatic Monday and 1st-of-the-month emails only come from the live app."
+      : "Sent automatically to "+to+": last week's report every Monday at 07:00, and last month's on the 1st at 07:00.";
+    $("testWeekly").disabled=$("testMonthly").disabled=!cfg.emailReports;
     $("waStatus").textContent=cfg.autoWhatsApp?"✅ Automatic sending is on. Card messages go out by themselves.":"Automatic sending is off. Staff send messages with the Open in WhatsApp button.";
     renderBanner(); loadEditors(); loadHours(); clearMessage(); render(); refreshToday(); refreshReplies(false);
   }
@@ -879,6 +903,30 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
       fillTable("repTypes",r.byType,[[x=>x.name],[x=>String(x.washes),1],[x=>rand(x.takings),1]]);
     }catch(err){ toast(err.message); }
   }
+
+  // ---------- settings: copy live data (test copies only) ----------
+  let copyArmed=false;
+  $("copyLiveBtn").onclick=async ()=>{
+    const m=$("copyLiveMsg"), b=$("copyLiveBtn");
+    if(!copyArmed){ copyArmed=true; b.textContent="Tap again to replace this test copy's data"; setTimeout(()=>{ copyArmed=false; b.textContent="Copy live data into this test copy"; },5000); return; }
+    copyArmed=false; b.disabled=true; b.textContent="Copying..."; m.className="err"; m.textContent="";
+    try{
+      const r=await api("POST","settings/copy-live");
+      cfg=await api("GET","config"); renderBanner(); loadEditors(); loadHours(); resetSel(); render(); refreshToday();
+      m.className="ok"; m.textContent="Copied "+r.customers+" customers and "+r.visits+" washes. Open Reports to check the figures.";
+    }catch(err){ m.textContent=err.message; }
+    b.disabled=false; b.textContent="Copy live data into this test copy";
+  };
+
+  // ---------- settings: email reports ----------
+  async function sendTestReport(period,btn){
+    const m=$("repEmailMsg"); m.className="err"; m.textContent=""; btn.disabled=true;
+    try{ const r=await api("POST","settings/report-test",{period}); m.className="ok"; m.textContent="Sent to "+r.to.join(", ")+": "+r.subject; }
+    catch(err){ m.textContent=err.message; }
+    btn.disabled=false;
+  }
+  $("testWeekly").onclick=()=>sendTestReport("week",$("testWeekly"));
+  $("testMonthly").onclick=()=>sendTestReport("month",$("testMonthly"));
 
   // ---------- settings: business hours ----------
   const DAYS=[["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],["thu","Thursday"],["fri","Friday"],["sat","Saturday"],["sun","Sunday"]];

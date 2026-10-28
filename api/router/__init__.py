@@ -6,18 +6,44 @@ import re
 
 import azure.functions as func
 
+from urllib.parse import urlparse
+
 from core import ApiError, Rewards
+from mailer import AcsMailer
 from store import TableStore
 from whatsapp import WhatsAppSender
 
-_svc = None
+_services = {}
 
 
-def service():
-    global _svc
-    if _svc is None:
-        _svc = Rewards.from_env(TableStore(os.environ["STORAGE_CONNECTION"]), WhatsAppSender.from_env())
-    return _svc
+def request_host(req):
+    original = req.headers.get("x-ms-original-url") or ""
+    host = urlparse(original).hostname if original else None
+    return (host or req.headers.get("x-forwarded-host") or req.headers.get("host") or "").split(",")[0].strip().lower()
+
+
+def is_test_copy(host, public_url):
+    """Pull-request test copies live at <live-name>-<number>.<region>.azurestaticapps.net.
+    Only an exact match of that pattern counts as a test copy; anything else is treated as live."""
+    live = (urlparse(public_url).hostname or "").lower()
+    if not live.endswith(".azurestaticapps.net") or not host:
+        return False
+    name = live.split(".")[0]
+    return re.fullmatch(re.escape(name) + r"-\d+\.[a-z0-9-]+\.\d+\.azurestaticapps\.net", host) is not None
+
+
+def service(req=None):
+    env = "test" if req is not None and is_test_copy(request_host(req), os.environ.get("PUBLIC_URL", "")) else "live"
+    if env not in _services:
+        conn = os.environ["STORAGE_CONNECTION"]
+        if env == "test":
+            # test copies: own tables, never message customers; report emails only from the
+            # "Send ... report now" button, built from test data and marked [TEST COPY]
+            _services[env] = Rewards.from_env(TableStore(conn, prefix="test"), None, mailer=AcsMailer.from_env(), env="test")
+            _services[env].live_source = lambda: service().store       # read-only source for "copy live data"
+        else:
+            _services[env] = Rewards.from_env(TableStore(conn), WhatsAppSender.from_env(), mailer=AcsMailer.from_env())
+    return _services[env]
 
 
 def client_ip(req):
@@ -29,9 +55,12 @@ def client_ip(req):
     return "unknown"
 
 
-def dispatch(svc, method, path, body, token, ip):
+def dispatch(svc, method, path, body, token, ip, report_key=None):
     if path == "login" and method == "POST":
         return svc.login(body.get("pin"), ip)
+    m = re.fullmatch(r"reports/send/(week|month)", path)
+    if m and method == "POST":          # called by the Azure scheduler, which has the report key instead of a PIN
+        return svc.send_scheduled_report(m.group(1), report_key)
 
     role = svc.require(token)       # everything below needs a valid PIN session
 
@@ -69,6 +98,12 @@ def dispatch(svc, method, path, body, token, ip):
     if m and method == "GET":
         svc.require(token, "admin")
         return svc.report(m.group(1), m.group(2))
+    if path == "settings/copy-live" and method == "POST":
+        svc.require(token, "admin")
+        return svc.copy_live_data()
+    if path == "settings/report-test" and method == "POST":
+        svc.require(token, "admin")
+        return svc.send_report(body.get("period") or "week")
     if path == "settings/hours" and method == "POST":
         svc.require(token, "admin")
         return svc.save_hours(body)
@@ -86,8 +121,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         if path == "whatsapp":      # Meta's webhook: no PIN; checked by verify token / signature instead
             if req.method.upper() == "GET":
-                return func.HttpResponse(service().verify_webhook(dict(req.params)), mimetype="text/plain")
-            result = service().handle_webhook(req.get_body(), req.headers.get("x-hub-signature-256"))
+                return func.HttpResponse(service(req).verify_webhook(dict(req.params)), mimetype="text/plain")
+            result = service(req).handle_webhook(req.get_body(), req.headers.get("x-hub-signature-256"))
             return func.HttpResponse(json.dumps(result), mimetype="application/json")
         try:
             body = req.get_json() if req.get_body() else {}
@@ -95,7 +130,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             raise ApiError(400, "Invalid request.")
         if not isinstance(body, dict):
             raise ApiError(400, "Invalid request.")
-        result = dispatch(service(), req.method.upper(), path, body, req.headers.get("x-session"), client_ip(req))
+        result = dispatch(service(req), req.method.upper(), path, body, req.headers.get("x-session"), client_ip(req),
+                          req.headers.get("x-report-key"))
         return func.HttpResponse(json.dumps(result), mimetype="application/json",
                                  headers={"Cache-Control": "no-store"})
     except ApiError as e:
