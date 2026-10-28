@@ -37,8 +37,9 @@ def service(req=None):
     if env not in _services:
         conn = os.environ["STORAGE_CONNECTION"]
         if env == "test":
-            # test copies: own tables, never message real customers, never email reports
-            _services[env] = Rewards.from_env(TableStore(conn, prefix="test"), None, mailer=None, env="test")
+            # test copies: own tables, never message customers; report emails only from the
+            # "Send ... report now" button, built from test data and marked [TEST COPY]
+            _services[env] = Rewards.from_env(TableStore(conn, prefix="test"), None, mailer=AcsMailer.from_env(), env="test")
             _services[env].live_source = lambda: service().store       # read-only source for "copy live data"
         else:
             _services[env] = Rewards.from_env(TableStore(conn), WhatsAppSender.from_env(), mailer=AcsMailer.from_env())

@@ -176,7 +176,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
 </section>
 
 <!-- APP -->
-<div class="test-banner" id="testBanner" hidden>TEST COPY: changes here use test data and don't affect the live app. No WhatsApp messages or emails are sent.</div>
+<div class="test-banner" id="testBanner" hidden>TEST COPY: changes here use test data and don't affect the live app. Report emails sent from here are marked [TEST COPY].</div>
 <div id="sApp" class="wrap" hidden>
   <div class="top">
     <div class="brand"><img src="logo.jpg" alt="Mighty Car-Wash"><div><div style="font-weight:900;font-size:18px">Rewards</div><div class="who" id="whoAmI">Staff</div></div></div>
@@ -454,9 +454,10 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
     $("tReports").hidden=cfg.role!=="admin";
     $("testBanner").hidden=cfg.env!=="test";
     $("copyLivePanel").hidden=!(cfg.env==="test"&&cfg.role==="admin");
-    $("repEmailInfo").textContent=cfg.emailReports
-      ? "Sent automatically to "+(cfg.reportEmails.join(", ")||"(no address set)")+": last week's report every Monday at 07:00, and last month's on the 1st at 07:00."
-      : "Report emails aren't switched on for this copy of the app.";
+    const to=cfg.reportEmails.join(", ")||"(no address set)";
+    $("repEmailInfo").textContent=!cfg.emailReports ? "Report emails aren't switched on for this copy of the app."
+      : cfg.env==="test" ? "Test copy: the buttons below email a report made from this test copy's data to "+to+", marked [TEST COPY]. The automatic Monday and 1st-of-the-month emails only come from the live app."
+      : "Sent automatically to "+to+": last week's report every Monday at 07:00, and last month's on the 1st at 07:00.";
     $("testWeekly").disabled=$("testMonthly").disabled=!cfg.emailReports;
     $("waStatus").textContent=cfg.autoWhatsApp?"✅ Automatic sending is on. Card messages go out by themselves.":"Automatic sending is off. Staff send messages with the Open in WhatsApp button.";
     renderBanner(); loadEditors(); loadHours(); clearMessage(); render(); refreshToday(); refreshReplies(false);

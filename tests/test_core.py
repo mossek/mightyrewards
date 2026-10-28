@@ -523,6 +523,21 @@ class EmailReportTests(unittest.TestCase):
             svc.send_report("week")
         self.assertEqual(e.exception.status, 409)
 
+    def test_test_copy_emails_are_marked_and_never_scheduled(self):
+        mailer = FakeMailer()
+        test = Rewards(MemoryStore(), None, dict(CFG, env="test", report_key="k" * 30,
+                                                 report_emails=["owner@example.test"]), Clock(), mailer=mailer)
+        r = test.send_report("week")                              # the Settings button works on a test copy
+        self.assertTrue(r["subject"].startswith("[TEST COPY] "))
+        self.assertIn("TEST COPY", mailer.sent[0][2])
+        self.assertIn("TEST COPY", mailer.sent[0][3])
+        with self.assertRaises(ApiError) as e:
+            test.send_scheduled_report("week", "k" * 30)          # automatic emails: live app only
+        self.assertEqual(e.exception.status, 409)
+        self.assertEqual(len(mailer.sent), 1)
+        live = self.svc.send_report("week")
+        self.assertFalse(live["subject"].startswith("[TEST COPY]"))
+
     def test_names_are_escaped_in_html(self):
         self.svc.save_catalog({"types": [{"name": "<b>Wax</b>", "price": 10}], "staff": [{"name": "Sipho"}]})
         cat = self.svc.catalog()

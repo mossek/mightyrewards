@@ -707,6 +707,8 @@ class Rewards:
         expected = self.cfg.get("report_key") or ""
         if not expected or not hmac.compare_digest(str(key or ""), expected):
             raise ApiError(401, "Not allowed.")
+        if self.cfg.get("env") == "test":
+            raise ApiError(409, "Scheduled reports are only sent from the live app.")
         return self.send_report(period)
 
     def send_report(self, period):
@@ -719,6 +721,11 @@ class Rewards:
             raise ApiError(409, "No email address is set for reports (REPORT_EMAILS).")
         r = self.report(period, self._last_full_period(period))
         subject, text, html = self.report_email(r)
+        if self.cfg.get("env") == "test":
+            subject = "[TEST COPY] " + subject
+            text = "TEST COPY: this report was made from the test copy's data, not the live app.\n\n" + text
+            html = ('<p style="background:#f5c344;color:#2a1f00;font-weight:700;padding:8px 12px;border-radius:8px">'
+                    'TEST COPY: this report was made from the test copy\'s data, not the live app.</p>') + html
         try:
             self.mailer.send(to, subject, text, html)
         except Exception as e:
