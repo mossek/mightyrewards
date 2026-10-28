@@ -686,6 +686,15 @@ class Rewards:
                 "today": sa_day(self.clock()), "totals": totals(cur), "previous": totals(prev),
                 "days": days, "byStaff": breakdown("staff"), "byType": breakdown("washType")}
 
+    # ---------- test copies ----------
+    live_source = None      # set by the router on test copies: returns the live data store (read only)
+
+    def copy_live_data(self):
+        if self.cfg.get("env") != "test" or self.live_source is None:
+            raise ApiError(409, "Copying live data only works on a test copy.")
+        counts = self.store.replace_from(self.live_source())
+        return {"ok": True, "customers": counts.get("customers", 0), "visits": counts.get("visits", 0)}
+
     # ---------- emailed reports (owner) ----------
     def _last_full_period(self, period):
         today = datetime.fromtimestamp(self.clock(), SA_TZ).date()

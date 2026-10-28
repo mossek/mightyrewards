@@ -354,6 +354,12 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
       <button type="button" id="saveHours" style="justify-self:start">Save business hours</button>
       <div id="hoursMsg" class="err" role="status"></div>
     </div>
+    <div class="panel" id="copyLivePanel" hidden style="grid-column:1/-1;border-color:#f5c344">
+      <h2>Test data</h2>
+      <p class="small">Copy the live app's wash types, prices, staff, business hours, customers and wash history into this test copy, so you can test with real figures. This replaces the test copy's data. The live app is never changed, and this test copy never sends WhatsApp messages or emails.</p>
+      <button type="button" id="copyLiveBtn" style="justify-self:start">Copy live data into this test copy</button>
+      <div id="copyLiveMsg" class="err" role="status"></div>
+    </div>
     <div class="panel">
       <h2>Email reports</h2>
       <p id="repEmailInfo" class="small"></p>
@@ -447,6 +453,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
     $("tSettings").hidden=cfg.role!=="admin";
     $("tReports").hidden=cfg.role!=="admin";
     $("testBanner").hidden=cfg.env!=="test";
+    $("copyLivePanel").hidden=!(cfg.env==="test"&&cfg.role==="admin");
     $("repEmailInfo").textContent=cfg.emailReports
       ? "Sent automatically to "+(cfg.reportEmails.join(", ")||"(no address set)")+": last week's report every Monday at 07:00, and last month's on the 1st at 07:00."
       : "Report emails aren't switched on for this copy of the app.";
@@ -895,6 +902,20 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
       fillTable("repTypes",r.byType,[[x=>x.name],[x=>String(x.washes),1],[x=>rand(x.takings),1]]);
     }catch(err){ toast(err.message); }
   }
+
+  // ---------- settings: copy live data (test copies only) ----------
+  let copyArmed=false;
+  $("copyLiveBtn").onclick=async ()=>{
+    const m=$("copyLiveMsg"), b=$("copyLiveBtn");
+    if(!copyArmed){ copyArmed=true; b.textContent="Tap again to replace this test copy's data"; setTimeout(()=>{ copyArmed=false; b.textContent="Copy live data into this test copy"; },5000); return; }
+    copyArmed=false; b.disabled=true; b.textContent="Copying..."; m.className="err"; m.textContent="";
+    try{
+      const r=await api("POST","settings/copy-live");
+      cfg=await api("GET","config"); renderBanner(); loadEditors(); loadHours(); resetSel(); render(); refreshToday();
+      m.className="ok"; m.textContent="Copied "+r.customers+" customers and "+r.visits+" washes. Open Reports to check the figures.";
+    }catch(err){ m.textContent=err.message; }
+    b.disabled=false; b.textContent="Copy live data into this test copy";
+  };
 
   // ---------- settings: email reports ----------
   async function sendTestReport(period,btn){

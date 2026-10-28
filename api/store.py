@@ -6,6 +6,8 @@ import uuid
 from core import Conflict
 
 DAY_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+COPIED_TABLES = ("customers", "visits", "plates")   # what "copy live data" brings into a test copy
+COPIED_SETTINGS = ("catalog", "hours")          # wash types/prices/staff, business hours (never PINs)
 
 
 class TableStore:
@@ -13,6 +15,7 @@ class TableStore:
         """prefix "" = live data; "test" = the separate tables used by test copies of the app."""
         from azure.data.tables import TableServiceClient
         svc = TableServiceClient.from_connection_string(conn_str)
+        self.prefix = prefix
         table = lambda name: svc.create_table_if_not_exists(prefix + name)
         self.customers = table("customers")
         self.visits = table("visits")
@@ -118,8 +121,49 @@ class TableStore:
         self.settings.upsert_entity({"PartitionKey": "s", "RowKey": key, "value": json.dumps(value)})
 
 
+    # ---------- test copies: replace this (test) data with a copy of the live data ----------
+    def replace_from(self, src):
+        if self.prefix != "test":
+            raise RuntimeError("Refusing to overwrite live data")   # only ever copy live -> test
+        counts = {}
+        for name in COPIED_TABLES:
+            dst_t, src_t = getattr(self, name), getattr(src, name)
+            old = [e for e in dst_t.list_entities(select=["PartitionKey", "RowKey"])]
+            self._batched(dst_t, "delete", old)
+            rows = [e for e in src_t.list_entities()]
+            self._batched(dst_t, "upsert", rows)
+            counts[name] = len(rows)
+        for key in COPIED_SETTINGS:
+            value = src.get_setting(key)
+            if value is not None:
+                self.set_setting(key, value)
+        return counts
+
+    @staticmethod
+    def _batched(table, op, entities):
+        """Table Storage batches must share a PartitionKey and hold at most 100 operations."""
+        groups = {}
+        for e in entities:
+            body = {"PartitionKey": e["PartitionKey"], "RowKey": e["RowKey"]} if op == "delete" else dict(e)
+            groups.setdefault(e["PartitionKey"], []).append((op, body))
+        for ops in groups.values():
+            for i in range(0, len(ops), 100):
+                table.submit_transaction(ops[i:i + 100])
+
+
 class MemoryStore:
     """Same interface as TableStore, for tests and local trials."""
+    prefix = ""
+
+    def replace_from(self, src):
+        if self.prefix != "test":
+            raise RuntimeError("Refusing to overwrite live data")
+        import copy
+        self.c, self.v, self.p = copy.deepcopy(src.c), copy.deepcopy(src.v), copy.deepcopy(src.p)
+        for key in COPIED_SETTINGS:
+            if key in src.s:
+                self.s[key] = src.s[key]
+        return {"customers": len(self.c), "visits": sum(len(x) for x in self.v.values()), "plates": len(self.p)}
 
     def __init__(self):
         self.c, self.v, self.s, self.p, self.r = {}, {}, {}, {}, {}

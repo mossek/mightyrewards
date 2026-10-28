@@ -551,6 +551,42 @@ class MailerTests(unittest.TestCase):
         self.assertEqual(h["Authorization"], "HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature=" + sig)
 
 
+class CopyLiveDataTests(unittest.TestCase):
+    def setUp(self):
+        self.live, _ = make()
+        cat = self.live.save_catalog({"types": [{"name": "Premium", "price": 100}], "staff": [{"name": "Sipho"}]})
+        self.live.create_customer({"phone": "0821234567", "name": "A", "consent": True, "plate": "CA123",
+                                   "type": cat["types"][0]["id"], "staff": cat["staff"][0]["id"]})
+        self.live.change_staff_pin("4321")
+        test_store = MemoryStore()
+        test_store.prefix = "test"
+        self.test = Rewards(test_store, None, dict(CFG, env="test"), Clock())
+        self.test.live_source = lambda: self.live.store
+
+    def test_copy_brings_settings_customers_and_washes_but_not_pins(self):
+        self.assertEqual(self.test.catalog()["types"], [])
+        r = self.test.copy_live_data()
+        self.assertEqual((r["customers"], r["visits"]), (1, 1))
+        self.assertEqual(self.test.catalog()["types"][0]["name"], "Premium")
+        self.assertEqual(self.test.get_customer("CA123")["customer"]["name"], "A")
+        self.assertEqual(self.test.login("1234", "1.1.1.1")["role"], "staff")    # test copy keeps its own PIN
+
+    def test_changes_in_test_copy_never_reach_live(self):
+        self.test.copy_live_data()
+        self.test.action("0821234567", "undo")
+        self.test.delete_customer("0821234567")
+        self.assertEqual(self.live.get_customer("0821234567")["customer"]["count"], 1)
+
+    def test_never_runs_on_live(self):
+        self.live.live_source = lambda: self.test.store
+        with self.assertRaises(ApiError):
+            self.live.copy_live_data()                       # live app: refused (not a test copy)
+        live_store = self.live.store
+        with self.assertRaises(RuntimeError):
+            live_store.replace_from(self.test.store)         # store itself refuses to overwrite live data
+        self.assertIsNotNone(self.live.get_customer("0821234567")["customer"])
+
+
 class TestCopyDetectionTests(unittest.TestCase):
     def test_only_pull_request_copies_count_as_test(self):
         from router import is_test_copy

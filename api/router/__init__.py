@@ -39,6 +39,7 @@ def service(req=None):
         if env == "test":
             # test copies: own tables, never message real customers, never email reports
             _services[env] = Rewards.from_env(TableStore(conn, prefix="test"), None, mailer=None, env="test")
+            _services[env].live_source = lambda: service().store       # read-only source for "copy live data"
         else:
             _services[env] = Rewards.from_env(TableStore(conn), WhatsAppSender.from_env(), mailer=AcsMailer.from_env())
     return _services[env]
@@ -96,6 +97,9 @@ def dispatch(svc, method, path, body, token, ip, report_key=None):
     if m and method == "GET":
         svc.require(token, "admin")
         return svc.report(m.group(1), m.group(2))
+    if path == "settings/copy-live" and method == "POST":
+        svc.require(token, "admin")
+        return svc.copy_live_data()
     if path == "settings/report-test" and method == "POST":
         svc.require(token, "admin")
         return svc.send_report(body.get("period") or "week")
