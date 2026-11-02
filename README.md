@@ -57,7 +57,7 @@ Sign in with the **owner PIN** → **Settings** → add each wash type with its 
 (for example a valet = 2 stamps), and each staff member's name → **Save**. Staff then pick the wash type and
 who washed the car for every wash. Today's screen shows takings, washes per staff member and per wash type.
 
-Customers can be found by **cell number or car registration**. A customer can have up to 5 cars; if they have
+Customers can be found by **cell number or car registration**. A customer can have up to 10 cars; if they have
 more than one, staff pick which car is being washed. **Undo last wash** reverses the most recent wash for that
 customer, including its stamps and price.
 

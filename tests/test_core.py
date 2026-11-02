@@ -265,6 +265,19 @@ class VisitDetailTests(unittest.TestCase):
         self.svc.delete_customer("0821234567")
         self.assertIsNone(self.svc.get_customer("BX12YZGP")["customer"])
 
+    def test_up_to_ten_cars(self):
+        self.svc.create_customer({"phone": "0821234567", "name": "A", "consent": True, "plate": "CAR1GP",
+                                  **self.visit(self.full, self.sipho)})
+        for n in range(2, 11):
+            self.svc.add_car("0821234567", "CAR%dGP" % n)
+        c = self.svc.get_customer("0821234567")["customer"]
+        self.assertEqual(len(c["cars"]), 10)
+        self.assertEqual(self.svc.get_customer("CAR10GP")["customer"]["phone"], "27821234567")
+        with self.assertRaises(ApiError) as e:
+            self.svc.add_car("0821234567", "CAR11GP")
+        self.assertIn("up to 10 cars", e.exception.message)
+        self.svc.add_car("0821234567", "CAR5GP")              # re-adding a car it already has is fine
+
     def test_catalog_validation(self):
         with self.assertRaises(ApiError):
             self.svc.save_catalog({"types": [{"name": "X", "price": "abc"}], "staff": []})

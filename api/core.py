@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 GOAL = 10            # the 10th wash is free
 PAID = GOAL - 1      # 9 paid washes fill the card
+MAX_CARS = 10        # car registrations per customer
 SA_TZ = timezone(timedelta(hours=2))   # South Africa has no daylight saving
 STAFF_TOKEN_HOURS = 12
 ADMIN_TOKEN_HOURS = 2
@@ -543,8 +544,8 @@ class Rewards:
         def fn(c):
             cars = cars_of(c)
             if plate not in cars:
-                if len(cars) >= 5:
-                    raise ApiError(400, "A customer can have up to 5 cars.")
+                if len(cars) >= MAX_CARS:
+                    raise ApiError(400, "A customer can have up to %d cars." % MAX_CARS)
                 cars.append(plate)
             c["cars"] = ",".join(cars)
             return c
