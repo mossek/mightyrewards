@@ -158,6 +158,14 @@ tbody tr:hover{background:var(--raised)}
 .rep-table{min-width:0}
 details summary{cursor:pointer;color:var(--muted);font-size:14px}
 .test-banner{background:#f5c344;color:#2a1f00;font-weight:800;text-align:center;padding:8px 16px;font-size:14px}
+textarea{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);resize:vertical}
+textarea:focus-visible{outline:3px solid var(--cyan);outline-offset:2px}
+.ann-list{list-style:none;margin:0;padding:0;display:grid;gap:6px;max-height:420px;overflow:auto}
+.ann-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:6px 0;font-size:14px}
+.ann-list li.done{color:var(--muted)}
+.ann-list .btn,.ann-list button{min-height:38px;padding:6px 12px;font-size:14px}
+.ann-progress{height:8px;border-radius:999px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.ann-progress div{height:100%;background:var(--wa)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;font-size:14px;max-width:calc(100% - 32px);z-index:5}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:no-preference){.stamp{transition:background .2s,border-color .2s}}
@@ -281,7 +289,10 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
   <!-- CUSTOMERS -->
   <div id="pCustomers" class="panel" hidden>
     <div class="card-head">
-      <h2>Customers <span class="small" id="custCount"></span></h2>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <h2>Customers <span class="small" id="custCount"></span></h2>
+        <button type="button" class="btn wa" id="annOpen" hidden style="min-height:40px;padding:6px 14px">Message all customers</button>
+      </div>
       <div style="flex:0 1 260px;min-width:0"><label for="filter" class="small" style="font-weight:500">Search name or number</label><input id="filter" type="text"></div>
     </div>
     <div class="tbl-wrap">
@@ -291,6 +302,25 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
       </table>
     </div>
     <p class="small" id="custEmpty" hidden>No customers yet. Add the first one from the Counter tab.</p>
+  </div>
+
+  <!-- MESSAGE ALL CUSTOMERS (owner) -->
+  <div id="annBox" class="panel" hidden>
+    <div class="card-head">
+      <h2>Message all customers</h2>
+      <button type="button" class="ghost" id="annClose" style="min-height:38px">Close</button>
+    </div>
+    <div>
+      <label for="annText">Your message</label>
+      <textarea id="annText" rows="5" maxlength="1000" placeholder="Hi {name}, Mighty Car-Wash is closed today due to a water shortage. We'll let you know as soon as we're open again. Sorry for the inconvenience!"></textarea>
+      <p class="small" style="margin-top:6px">Type <b>{name}</b> where the customer's first name should go. Emojis are left out, because WhatsApp on computers shows them as ??.</p>
+    </div>
+    <p id="annInfo" class="small"></p>
+    <div class="ann-progress" aria-hidden="true"><div id="annBar" style="width:0%"></div></div>
+    <a class="btn wa" id="annNext" href="#" target="_blank" rel="noopener" style="justify-self:start">Send to next customer</a>
+    <p class="small">Each tap opens WhatsApp with the message typed for the next customer. Press send in WhatsApp, come back here, and tap again. Progress is saved on this device.</p>
+    <ul class="ann-list" id="annList"></ul>
+    <button type="button" class="ghost" id="annReset" style="justify-self:start">Start a new message (clear the ticks)</button>
   </div>
 
   <!-- REPLIES -->
@@ -452,6 +482,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
     $("whoAmI").textContent=cfg.role==="admin"?"Owner":"Staff";
     $("tSettings").hidden=cfg.role!=="admin";
     $("tReports").hidden=cfg.role!=="admin";
+    $("annOpen").hidden=cfg.role!=="admin";
     $("testBanner").hidden=cfg.env!=="test";
     $("copyLivePanel").hidden=!(cfg.env==="test"&&cfg.role==="admin");
     const to=cfg.reportEmails.join(", ")||"(no address set)";
@@ -476,6 +507,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
   const tabs={tCounter:"pCounter",tCustomers:"pCustomers",tReplies:"pReplies",tReports:"pReports",tSettings:"pSettings"};
   Object.keys(tabs).forEach(t=>$(t).onclick=()=>{
     Object.entries(tabs).forEach(([b,p])=>{ $(b).setAttribute("aria-selected",b===t); $(p).hidden=b!==t; });
+    $("annBox").hidden=true;
     if(t==="tCustomers") refreshCustomers();
     if(t==="tSettings"){ loadEditors(); loadHours(); }
     if(t==="tReplies") refreshReplies(true);
@@ -927,6 +959,61 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px}
   }
   $("testWeekly").onclick=()=>sendTestReport("week",$("testWeekly"));
   $("testMonthly").onclick=()=>sendTestReport("month",$("testMonthly"));
+
+  // ---------- message all customers (owner) ----------
+  const EMOJI=/[\u{1F000}-\u{1FFFF}\u2600-\u27BF\uFE0F\u200D]/gu;
+  let annSent=new Set();
+  function annLoad(){ try{ const a=JSON.parse(read("mw-ann")||"null"); if(a){ $("annText").value=a.text||""; annSent=new Set(a.sent||[]); } }catch(e){} }
+  function annSave(){ store("mw-ann",{text:$("annText").value,sent:Array.from(annSent)}); }
+  function annTargets(){ return customers.filter(c=>c.wa).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"")); }
+  function annMsg(c){
+    const first=(c.name&&c.name!=="Customer")?c.name.split(" ")[0]:"there";
+    return $("annText").value.replace(/\{name\}/gi,first).replace(EMOJI,"")
+      .replace(/ +([.,!?])/g,"$1").replace(/[ \t]{2,}/g," ").replace(/[ \t]+$/gm,"").trim();
+  }
+  function annLink(c){ return "https://wa.me/"+c.phone+"?text="+encodeURIComponent(annMsg(c)); }
+  function annMark(c){ annSent.add(c.phone); annSave(); setTimeout(renderAnn,300); }
+  function renderAnn(){
+    const list=annTargets(), done=list.filter(c=>annSent.has(c.phone)).length, left=list.filter(c=>!annSent.has(c.phone));
+    const optedOut=customers.length-list.length, hasText=$("annText").value.trim().length>0;
+    $("annInfo").textContent=done+" of "+list.length+" customers sent"+(optedOut?" · "+optedOut+" who turned off WhatsApp updates are left out":"")+".";
+    $("annBar").style.width=(list.length?Math.round(done/list.length*100):0)+"%";
+    const nb=$("annNext"), next=left[0];
+    if(!hasText){ nb.setAttribute("aria-disabled","true"); nb.href="#"; nb.textContent="Type your message first"; }
+    else if(!next){ nb.setAttribute("aria-disabled","true"); nb.href="#"; nb.textContent=list.length?"All customers sent \u2713":"No customers to message"; }
+    else{ nb.removeAttribute("aria-disabled"); nb.href=annLink(next); nb.textContent="Send to next: "+next.name+" ("+pretty(next.phone)+")"; nb.dataset.phone=next.phone; }
+    const ul=$("annList"); ul.innerHTML="";
+    list.forEach(c=>{
+      const sent=annSent.has(c.phone), li=el("li",sent?"done":null);
+      li.appendChild(el("span",null,c.name+" \u00B7 "+pretty(c.phone)));
+      if(sent){
+        const u=el("button","ghost","Sent \u2713 (undo)"); u.type="button";
+        u.onclick=()=>{ annSent.delete(c.phone); annSave(); renderAnn(); }; li.appendChild(u);
+      } else {
+        const a=el("a","btn wa","Send"); a.href=hasText?annLink(c):"#"; a.target="_blank"; a.rel="noopener";
+        if(!hasText) a.setAttribute("aria-disabled","true");
+        a.onclick=e=>{ if(!hasText){ e.preventDefault(); return; } annMark(c); }; li.appendChild(a);
+      }
+      ul.appendChild(li);
+    });
+  }
+  $("annNext").addEventListener("click",e=>{
+    if($("annNext").getAttribute("aria-disabled")==="true"){ e.preventDefault(); return; }
+    const c=customers.find(x=>x.phone===$("annNext").dataset.phone); if(c) annMark(c);
+  });
+  let annT; $("annText").addEventListener("input",()=>{ clearTimeout(annT); annT=setTimeout(()=>{ annSave(); renderAnn(); },250); });
+  let annResetArmed=false;
+  $("annReset").onclick=()=>{
+    if(!annResetArmed){ annResetArmed=true; $("annReset").textContent="Tap again to clear the ticks and the message"; setTimeout(()=>{ annResetArmed=false; $("annReset").textContent="Start a new message (clear the ticks)"; },4000); return; }
+    annResetArmed=false; annSent=new Set(); $("annText").value=""; annSave(); $("annReset").textContent="Start a new message (clear the ticks)"; renderAnn();
+  };
+  $("annOpen").onclick=async ()=>{
+    $("pCustomers").hidden=true; $("annBox").hidden=false; annLoad();
+    await refreshCustomers(); renderAnn(); window.scrollTo(0,0); $("annText").focus();
+  };
+  $("annClose").onclick=()=>{ $("annBox").hidden=true; $("pCustomers").hidden=false; };
+  // when the owner comes back from WhatsApp, refresh the list
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden && !$("annBox").hidden) renderAnn(); });
 
   // ---------- settings: business hours ----------
   const DAYS=[["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],["thu","Thursday"],["fri","Friday"],["sat","Saturday"],["sun","Sunday"]];
